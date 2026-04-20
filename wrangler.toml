@@ -15,20 +15,14 @@ not_found_handling = "404-page"
 [[d1_databases]]
 binding = "DB"
 database_name = "education_db"
-database_id = "a0021f2e-a8cc-4e20-8910-3c7290ba47a6"
+database_id = "07742e11-50c4-410f-a411-f635b288ff0b"
 
 
-[observability]
-enabled = false
-head_sampling_rate = 1
+[durable_objects]
+bindings = [
+	{ name = "WAITINGROOM_DO", class_name = "WaitingRoomDO" }
+]
 
-[observability.logs]
-enabled = true
-head_sampling_rate = 1
-persist = true
-invocation_logs = true
-
-[observability.traces]
-enabled = false
-persist = true
-head_sampling_rate = 1
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WaitingRoomDO"]

@@ -27,3 +27,20 @@ Thumbs.db
 .idea/
 *.swp
 .env*
+# Added by code-review-graph
+.code-review-graph/
+
+# AI/editor agent artifacts (local machine specific)
+.cursor/
+.kiro/
+.claude/
+.cursorrules
+.windsurfrules
+.mcp.json
+.opencode.json
+
+# Local assistant docs / generated review artifacts
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+code-review-graph.md

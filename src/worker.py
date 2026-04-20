@@ -40,10 +40,146 @@ import os
 import re
 import traceback
 from types import SimpleNamespace
+import uuid
+from workers import DurableObject, Response
+class WaitingRoomDO(DurableObject):
+    def __init__(self, state, env):
+        super().__init__(state, env)
+        self.state = state
+        self.env = env
+        self.rooms = None  # lazy load durable state
+
+    async def on_fetch(self, request):
+        url = urlparse(request.url)
+        method = request.method.upper()
+        path = url.path
+        auth_user = verify_token(
+            request.headers.get("Authorization") or "",
+            getattr(self.env, "JWT_SECRET", "") or "",
+        )
+        if self.rooms is None:
+            stored_rooms = await self.state.storage.get("rooms")
+            if isinstance(stored_rooms, str) and stored_rooms:
+                self.rooms = json.loads(stored_rooms)
+            else:
+                self.rooms = {}
+
+        def _normalize_participants(raw):
+            items = raw if isinstance(raw, list) else []
+            out = []
+            for p in items:
+                if isinstance(p, dict):
+                    pid = str(p.get("id") or "").strip()
+                    name = str(p.get("name") or "").strip() or "anonymous"
+                    if not pid:
+                        pid = name.lower()
+                    out.append({"id": pid, "name": name})
+                elif isinstance(p, str):
+                    name = p.strip() or "anonymous"
+                    out.append({"id": name.lower(), "name": name})
+            return out
+
+        if path.endswith('/api/waitingrooms') and method == 'GET':
+            # List all rooms
+            return Response(json.dumps({"rooms": list(self.rooms.values())}), headers={"Content-Type": "application/json"})
+        if path.endswith('/api/waitingroom/create') and method == 'POST':
+            data = await request.json()
+            room_id = 'r_' + str(uuid.uuid4())
+            room = {
+                "id": room_id,
+                "title": data.get("title", ""),
+                "subject": data.get("subject", ""),
+                "desc": data.get("desc", ""),
+                "tags": data.get("tags", []),
+                "creator": auth_user["username"] if auth_user else data.get("creator", ""),
+                "creatorId": auth_user["id"] if auth_user else str(data.get("creatorId", "")).strip(),
+                "createdAt": data.get("createdAt", 0),
+                "participants": []
+            }
+            self.rooms[room_id] = room
+            await self.state.storage.put("rooms", json.dumps(self.rooms))
+            return Response(json.dumps(room), headers={"Content-Type": "application/json"})
+
+        if path.endswith('/api/waitingroom/join') and method == 'POST':
+            data = await request.json()
+            room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
+            name = auth_user["username"] if auth_user else str(data.get("name") or data.get("user") or "").strip()
+            participant_id = auth_user["id"] if auth_user else str(data.get("participantId") or "").strip()
+            if not room_id:
+                return Response(json.dumps({"error": "roomId is required"}), status=400, headers={"Content-Type": "application/json"})
+            room = self.rooms.get(room_id)
+            if not room:
+                return Response(json.dumps({"error": "Room not found"}), status=404, headers={"Content-Type": "application/json"})
+            if not name:
+                name = "anonymous"
+            if not participant_id:
+                participant_id = name.lower()
+
+            participants = _normalize_participants(room.get("participants"))
+            updated = False
+            for p in participants:
+                if p["id"] == participant_id:
+                    p["name"] = name
+                    updated = True
+                    break
+            if not updated:
+                participants.append({"id": participant_id, "name": name})
+            room["participants"] = participants
+            self.rooms[room_id] = room
+            await self.state.storage.put("rooms", json.dumps(self.rooms))
+            return Response(json.dumps(room), headers={"Content-Type": "application/json"})
+
+        if path.endswith('/api/waitingroom/leave') and method == 'POST':
+            data = await request.json()
+            room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
+            name = auth_user["username"] if auth_user else str(data.get("name") or data.get("user") or "").strip()
+            participant_id = auth_user["id"] if auth_user else str(data.get("participantId") or "").strip()
+            if not room_id or (not name and not participant_id):
+                return Response(json.dumps({"error": "roomId and participant identity are required"}), status=400, headers={"Content-Type": "application/json"})
+            room = self.rooms.get(room_id)
+            if not room:
+                return Response(json.dumps({"error": "Room not found"}), status=404, headers={"Content-Type": "application/json"})
+
+            participants = _normalize_participants(room.get("participants"))
+            if participant_id:
+                room["participants"] = [p for p in participants if p["id"] != participant_id]
+            else:
+                room["participants"] = [p for p in participants if p["name"].lower() != name.lower()]
+            self.rooms[room_id] = room
+            await self.state.storage.put("rooms", json.dumps(self.rooms))
+            return Response(json.dumps(room), headers={"Content-Type": "application/json"})
+
+        if path.endswith('/api/waitingroom/delete') and method == 'POST':
+            data = await request.json()
+            room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
+            actor = auth_user["username"] if auth_user else str(data.get("actor") or data.get("name") or "").strip()
+            actor_id = auth_user["id"] if auth_user else str(data.get("actorId") or "").strip()
+            if not room_id:
+                return Response(json.dumps({"error": "roomId is required"}), status=400, headers={"Content-Type": "application/json"})
+            room = self.rooms.get(room_id)
+            if not room:
+                return Response(json.dumps({"error": "Room not found"}), status=404, headers={"Content-Type": "application/json"})
+            creator = str(room.get("creator") or "").strip()
+            creator_id = str(room.get("creatorId") or "").strip()
+            normalized_actor = actor.lower()
+            normalized_creator = creator.lower()
+            # Backward compatibility:
+            # some existing rooms may carry a stale/migrated creatorId while still having
+            # the correct creator name. Allow delete when either identity (id OR name) matches.
+            id_matches = bool(creator_id and actor_id and actor_id == creator_id)
+            name_matches = bool(actor and creator and normalized_actor == normalized_creator)
+            if creator_id and not (id_matches or name_matches):
+                return Response(json.dumps({"error": "Only the creator can delete this room"}), status=403, headers={"Content-Type": "application/json"})
+            if not creator_id and actor and creator and not name_matches:
+                return Response(json.dumps({"error": "Only the creator can delete this room"}), status=403, headers={"Content-Type": "application/json"})
+
+            del self.rooms[room_id]
+            await self.state.storage.put("rooms", json.dumps(self.rooms))
+            return Response(json.dumps({"success": True, "roomId": room_id}), headers={"Content-Type": "application/json"})
+
+        return Response(json.dumps({"error": "Not implemented"}), status=404, headers={"Content-Type": "application/json"})
 from typing import Any, Dict
 from urllib.parse import urlparse, parse_qs
-
-from workers import Response
 
 import js
 from pyodide.ffi import to_js
@@ -572,7 +708,7 @@ async def seed_db(env, enc_key: str):
             ).bind(
                 uid,
                 blind_index(uname, enc_key),
-                blind_index(email, enc_key),
+                blind_index(email,    enc_key),
                 await encrypt_aes(display,  enc_key),
                 await encrypt_aes(uname,    enc_key),
                 await encrypt_aes(email,    enc_key),
@@ -1347,6 +1483,11 @@ async def _dispatch(request, env):
             return _unauthorized_basic()
         return await serve_static("/admin.html", env)
 
+    if path.startswith("/api/waitingroom") or path.startswith("/api/waitingrooms"):
+        # Route to WaitingRoomDO Durable Object
+        id = env.WAITINGROOM_DO.idFromName("main")
+        obj = env.WAITINGROOM_DO.get(id)
+        return await obj.fetch(request)
     if path.startswith("/api/"):
         if path == "/api/init" and method == "POST":
             try:
@@ -1416,3 +1557,6 @@ async def on_fetch(request, env):
     except Exception as e:
         await capture_exception(e, request, env, "on_fetch_unhandled")
         return err("Internal server error", 500)
+
+# Durable Object registration for Python Workers
+exported_handlers = {"WaitingRoomDO": WaitingRoomDO}

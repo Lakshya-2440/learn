@@ -175,10 +175,26 @@
 
 <script>
   const API   = '';
-  const token = localStorage.getItem('edu_token');
-  const user  = JSON.parse(localStorage.getItem('edu_user') || 'null');
+  function readAuthValue(key) {
+    const fromSession = sessionStorage.getItem(key);
+    if (fromSession) return fromSession;
+    const fromLocal = localStorage.getItem(key);
+    if (fromLocal) {
+      sessionStorage.setItem(key, fromLocal);
+      localStorage.removeItem(key);
+    }
+    return fromLocal;
+  }
+  function clearAuth() {
+    sessionStorage.removeItem('edu_token');
+    sessionStorage.removeItem('edu_user');
+    localStorage.removeItem('edu_token');
+    localStorage.removeItem('edu_user');
+  }
+  const token = readAuthValue('edu_token');
+  const user  = JSON.parse(readAuthValue('edu_user') || 'null');
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function logout() { localStorage.clear(); window.location.href = '/login.html'; }
+  function logout() { clearAuth(); window.location.href = '/login.html'; }
 
   if (!token || !user) {
     window.location.href = '/login.html';

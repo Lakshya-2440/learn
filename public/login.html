@@ -89,6 +89,20 @@
 
 <script>
   const API = '';
+  function readAuthValue(key) {
+    const fromSession = sessionStorage.getItem(key);
+    if (fromSession) return fromSession;
+    const fromLocal = localStorage.getItem(key);
+    if (fromLocal) {
+      sessionStorage.setItem(key, fromLocal);
+      localStorage.removeItem(key);
+    }
+    return fromLocal;
+  }
+  function writeAuthValue(key, value) {
+    sessionStorage.setItem(key, value);
+    localStorage.removeItem(key);
+  }
   function switchTab(tab) {
     const isLogin = tab === 'login';
     document.getElementById('panel-login').classList.toggle('hidden', !isLogin);
@@ -100,8 +114,8 @@
   if (params.get('tab') === 'register') switchTab('register');
 
   function storeAuth(data) {
-    localStorage.setItem('edu_token', data.token);
-    localStorage.setItem('edu_user',  JSON.stringify(data.user));
+    writeAuthValue('edu_token', data.token);
+    writeAuthValue('edu_user', JSON.stringify(data.user));
     window.location.href = '/dashboard.html';
   }
   function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.remove('hidden'); }
@@ -141,7 +155,7 @@
     finally { btn.textContent = 'Create Account'; btn.disabled = false; }
   });
 
-  if (localStorage.getItem('edu_token')) window.location.href = '/dashboard.html';
+  if (readAuthValue('edu_token')) window.location.href = '/dashboard.html';
 </script>
 </body>
 </html>

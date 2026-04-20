@@ -26,9 +26,11 @@
     <div class="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
       <a href="/" class="hover:text-brand">Activities</a>
       <a href="/dashboard.html" class="text-brand hover:text-brand-dark">Dashboard</a>
+      <a href="/login.html" class="hover:text-brand" id="waiting-room-link">Waiting Room</a>
       <a href="/teach.html" class="hover:text-brand" id="host-link">Host</a>
     </div>
     <div class="flex items-center gap-3">
+      <a id="waiting-room-link-top" href="/login.html" class="text-slate-600 text-sm font-medium hover:text-brand">Waiting Room</a>
       <span class="text-slate-600 text-sm hidden sm:block" id="nav-user"></span>
       <button onclick="logout()" class="text-slate-400 text-sm hover:text-red-500 transition">Logout</button>
     </div>
@@ -66,21 +68,100 @@
 <script>
   const API = '';
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  const token = localStorage.getItem('edu_token');
-  const user  = JSON.parse(localStorage.getItem('edu_user') || 'null');
-  if (!token || !user) window.location.href = '/login.html';
-  function logout() { localStorage.clear(); window.location.href = '/login.html'; }
+  function readAuthValue(key) {
+    const fromSession = sessionStorage.getItem(key);
+    if (fromSession) return fromSession;
+    const fromLocal = localStorage.getItem(key);
+    if (fromLocal) {
+      sessionStorage.setItem(key, fromLocal);
+      localStorage.removeItem(key);
+    }
+    return fromLocal;
+  }
+  function writeAuthValue(key, value) {
+    sessionStorage.setItem(key, value);
+    localStorage.removeItem(key);
+  }
+  const token = readAuthValue('edu_token');
+  let user = null;
+
+  function getUserFromToken(rawToken) {
+    if (!rawToken || !rawToken.includes('.')) return null;
+    try {
+      const payload = rawToken.split('.')[0];
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      const decoded = atob(padded);
+      const parsed = JSON.parse(decoded);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return {
+        id: String(parsed.id || '').trim(),
+        username: String(parsed.username || '').trim(),
+        role: String(parsed.role || '').trim()
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function clearAuthAndRedirect() {
+    sessionStorage.removeItem('edu_token');
+    sessionStorage.removeItem('edu_user');
+    localStorage.removeItem('edu_token');
+    localStorage.removeItem('edu_user');
+    window.location.href = '/login.html';
+  }
+
+  function syncStoredUser(tokenUser, storedUser) {
+    if (!tokenUser || (!tokenUser.id && !tokenUser.username)) return storedUser || null;
+    const merged = {
+      ...(storedUser || {}),
+      id: tokenUser.id || storedUser?.id || '',
+      username: tokenUser.username || storedUser?.username || '',
+      role: tokenUser.role || storedUser?.role || ''
+    };
+    writeAuthValue('edu_user', JSON.stringify(merged));
+    return merged;
+  }
+  const waitingRoomLink = document.getElementById('waiting-room-link');
+  const waitingRoomLinkTop = document.getElementById('waiting-room-link-top');
+  if (waitingRoomLink) {
+    waitingRoomLink.href = token ? '/waitingroom' : '/login.html';
+  }
+  if (waitingRoomLinkTop) {
+    waitingRoomLinkTop.href = token ? '/waitingroom' : '/login.html';
+  }
+  if (!token) window.location.href = '/login.html';
+  function logout() { clearAuthAndRedirect(); }
 
   const typeIcon  = { course:'📚', meetup:'🤝', workshop:'🔧', seminar:'🎤', other:'✨' };
   const typeColor = { course:'bg-indigo-100 text-indigo-700', meetup:'bg-pink-100 text-pink-700', workshop:'bg-orange-100 text-orange-700', seminar:'bg-teal-100 text-teal-700', other:'bg-slate-100 text-slate-600' };
   const fmtLabel  = { live:'Live', self_paced:'Self-paced', hybrid:'Hybrid' };
   const schedLabel = { one_time:'One-time', multi_session:'Multi-session', recurring:'Recurring', ongoing:'Ongoing' };
 
-  document.getElementById('nav-user').textContent = 'Hi, ' + user.username;
-
   async function loadDashboard() {
+    const storedUser = JSON.parse(readAuthValue('edu_user') || 'null');
+    user = syncStoredUser(getUserFromToken(token), storedUser);
+
     const res  = await fetch('/api/dashboard', { headers:{ Authorization: 'Bearer ' + token } });
+    if (!res.ok) {
+      clearAuthAndRedirect();
+      return;
+    }
     const data = await res.json();
+    const apiUser = data?.user || {};
+    user = {
+      ...(user || {}),
+      id: String(apiUser.id || user?.id || '').trim(),
+      username: String(apiUser.username || user?.username || '').trim(),
+      role: String(apiUser.role || user?.role || '').trim()
+    };
+    if (!user.username) {
+      clearAuthAndRedirect();
+      return;
+    }
+    writeAuthValue('edu_user', JSON.stringify(user));
+    document.getElementById('nav-user').textContent = 'Hi, ' + user.username;
     renderDashboard(data);
   }
 
