@@ -79,6 +79,21 @@ class WaitingRoomDO(DurableObject):
                     out.append({"id": name.lower(), "name": name})
             return out
 
+        m_room = re.fullmatch(r"/api/waitingroom/([A-Za-z0-9_-]+)", path)
+        if m_room and method == "GET":
+            room_id = m_room.group(1)
+            room = self.rooms.get(room_id)
+            if not room:
+                return Response(
+                    json.dumps({"error": "Room not found"}),
+                    status=404,
+                    headers={"Content-Type": "application/json"},
+                )
+            return Response(
+                json.dumps({"room": room}),
+                headers={"Content-Type": "application/json"},
+            )
+
         if path.endswith('/api/waitingrooms') and method == 'GET':
             # List all rooms
             return Response(json.dumps({"rooms": list(self.rooms.values())}), headers={"Content-Type": "application/json"})
@@ -94,6 +109,11 @@ class WaitingRoomDO(DurableObject):
                 "creator": auth_user["username"] if auth_user else data.get("creator", ""),
                 "creatorId": auth_user["id"] if auth_user else str(data.get("creatorId", "")).strip(),
                 "createdAt": data.get("createdAt", 0),
+                "fulfilled": False,
+                "fulfilledAt": 0,
+                "fulfilledBy": "",
+                "courseId": "",
+                "courseTitle": "",
                 "participants": []
             }
             self.rooms[room_id] = room
@@ -176,6 +196,40 @@ class WaitingRoomDO(DurableObject):
             del self.rooms[room_id]
             await self.state.storage.put("rooms", json.dumps(self.rooms))
             return Response(json.dumps({"success": True, "roomId": room_id}), headers={"Content-Type": "application/json"})
+
+        if path.endswith('/api/waitingroom/fulfill') and method == 'POST':
+            data = await request.json()
+            room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
+            actor = auth_user["username"] if auth_user else str(data.get("actor") or data.get("name") or "").strip()
+            actor_id = auth_user["id"] if auth_user else str(data.get("actorId") or "").strip()
+            course_id = str(data.get("courseId") or "").strip()
+            course_title = str(data.get("courseTitle") or "").strip()
+            if not room_id:
+                return Response(json.dumps({"error": "roomId is required"}), status=400, headers={"Content-Type": "application/json"})
+            if not course_id:
+                return Response(json.dumps({"error": "courseId is required"}), status=400, headers={"Content-Type": "application/json"})
+            room = self.rooms.get(room_id)
+            if not room:
+                return Response(json.dumps({"error": "Room not found"}), status=404, headers={"Content-Type": "application/json"})
+            creator = str(room.get("creator") or "").strip()
+            creator_id = str(room.get("creatorId") or "").strip()
+            normalized_actor = actor.lower()
+            normalized_creator = creator.lower()
+            id_matches = bool(creator_id and actor_id and actor_id == creator_id)
+            name_matches = bool(actor and creator and normalized_actor == normalized_creator)
+            if creator_id and not (id_matches or name_matches):
+                return Response(json.dumps({"error": "Only the creator can fulfill this room"}), status=403, headers={"Content-Type": "application/json"})
+            if not creator_id and actor and creator and not name_matches:
+                return Response(json.dumps({"error": "Only the creator can fulfill this room"}), status=403, headers={"Content-Type": "application/json"})
+
+            room["fulfilled"] = True
+            room["fulfilledAt"] = int(data.get("fulfilledAt") or 0) or int(js.Date.now())
+            room["fulfilledBy"] = actor
+            room["courseId"] = course_id
+            room["courseTitle"] = course_title
+            self.rooms[room_id] = room
+            await self.state.storage.put("rooms", json.dumps(self.rooms))
+            return Response(json.dumps(room), headers={"Content-Type": "application/json"})
 
         return Response(json.dumps({"error": "Not implemented"}), status=404, headers={"Content-Type": "application/json"})
 from typing import Any, Dict
@@ -1333,6 +1387,83 @@ async def api_create_session(req, env):
     return ok({"id": sid}, "Session created")
 
 
+async def api_delete_activity(req, env):
+    user = verify_token(req.headers.get("Authorization"), env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    body, bad_resp = await parse_json_object(req)
+    if bad_resp:
+        return bad_resp
+
+    act_id = (body.get("activity_id") or "").strip()
+    if not act_id:
+        return err("activity_id is required")
+
+    owned = await env.DB.prepare(
+        "SELECT id FROM activities WHERE id=? AND host_id=?"
+    ).bind(act_id, user["id"]).first()
+    if not owned:
+        return err("Activity not found or access denied", 404)
+
+    try:
+        await env.DB.prepare(
+            "DELETE FROM session_attendance WHERE session_id IN (SELECT id FROM sessions WHERE activity_id=?)"
+        ).bind(act_id).run()
+        await env.DB.prepare(
+            "DELETE FROM sessions WHERE activity_id=?"
+        ).bind(act_id).run()
+        await env.DB.prepare(
+            "DELETE FROM enrollments WHERE activity_id=?"
+        ).bind(act_id).run()
+        await env.DB.prepare(
+            "DELETE FROM activity_tags WHERE activity_id=?"
+        ).bind(act_id).run()
+        await env.DB.prepare(
+            "DELETE FROM activities WHERE id=? AND host_id=?"
+        ).bind(act_id, user["id"]).run()
+    except Exception as e:
+        await capture_exception(e, req, env, "api_delete_activity.delete")
+        return err("Failed to delete activity — please try again", 500)
+
+    return ok(None, "Activity deleted")
+
+
+async def api_delete_session(req, env):
+    user = verify_token(req.headers.get("Authorization"), env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    body, bad_resp = await parse_json_object(req)
+    if bad_resp:
+        return bad_resp
+
+    session_id = (body.get("session_id") or "").strip()
+    if not session_id:
+        return err("session_id is required")
+
+    session = await env.DB.prepare(
+        "SELECT s.id,s.activity_id FROM sessions s"
+        " JOIN activities a ON a.id=s.activity_id"
+        " WHERE s.id=? AND a.host_id=?"
+    ).bind(session_id, user["id"]).first()
+    if not session:
+        return err("Session not found or access denied", 404)
+
+    try:
+        await env.DB.prepare(
+            "DELETE FROM session_attendance WHERE session_id=?"
+        ).bind(session_id).run()
+        await env.DB.prepare(
+            "DELETE FROM sessions WHERE id=?"
+        ).bind(session_id).run()
+    except Exception as e:
+        await capture_exception(e, req, env, "api_delete_session.delete")
+        return err("Failed to delete session — please try again", 500)
+
+    return ok(None, "Session deleted")
+
+
 async def api_list_tags(_req, env):
     res  = await env.DB.prepare("SELECT id,name FROM tags ORDER BY name").all()
     tags = [{"id": r.id, "name": r.name} for r in (res.results or [])]
@@ -1530,6 +1661,12 @@ async def _dispatch(request, env):
 
         if path == "/api/sessions" and method == "POST":
             return await api_create_session(request, env)
+
+        if path == "/api/activities/delete" and method == "POST":
+            return await api_delete_activity(request, env)
+
+        if path == "/api/sessions/delete" and method == "POST":
+            return await api_delete_session(request, env)
 
         if path == "/api/tags" and method == "GET":
             return await api_list_tags(request, env)

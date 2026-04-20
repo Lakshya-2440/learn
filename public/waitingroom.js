@@ -5,6 +5,10 @@ async function fetchRooms() {
   return data.rooms || [];
 }
 
+function roomDetailUrl(roomId) {
+  return `/waitingroom-detail.html?id=${encodeURIComponent(String(roomId || ''))}`;
+}
+
 async function createRoom(room) {
   const res = await fetch('/api/waitingroom/create', {
     method: 'POST',
@@ -156,6 +160,7 @@ function renderRooms(rooms, currentUser, currentParticipantId) {
     const participantList = (Array.isArray(room.participants) ? room.participants : []).map(normalizeParticipant);
     const participants = participantList.length;
     totalParticipants += participants;
+    const isFulfilled = Boolean(room.fulfilled);
     const isJoined = participantList.some((p) => String(p.id) === String(currentParticipantId));
     const isCreator = String(room.creator || '').toLowerCase() === String(currentUser).toLowerCase();
     const tagsHtml = tags.length
@@ -166,22 +171,23 @@ function renderRooms(rooms, currentUser, currentParticipantId) {
       : '';
 
     return `
-      <div class="room-card">
+      <div class="room-card" data-room-id="${escapeHtml(room.id)}" role="link" tabindex="0">
         <div class="card-top">
           <span class="card-interested">${escapeHtml(room.subject || 'General')} · ${participants} interested</span>
-          <span class="open-badge"><span class="open-dot"></span>Open</span>
+          <span class="open-badge"><span class="open-dot"></span>${isFulfilled ? 'Fulfilled' : 'Open'}</span>
         </div>
         <div class="card-title">${escapeHtml(room.title || 'Untitled')}</div>
         ${room.desc ? `<div class="card-desc">${escapeHtml(room.desc)}</div>` : ''}
+        ${isFulfilled && room.courseId ? `<div class="card-desc"><a href="/course.html?id=${encodeURIComponent(String(room.courseId))}">Linked Course: ${escapeHtml(room.courseTitle || room.courseId)}</a></div>` : ''}
         ${tagsHtml}
         ${participantsHtml}
         <div class="card-footer">
           <span class="card-author">${escapeHtml(room.creator || 'anonymous')}</span>
           <div class="footer-right">
             <span class="card-time">${timeAgo(room.createdAt)}</span>
-            <button class="btn-join ${isJoined ? 'leave' : ''}" data-action="${isJoined ? 'leave' : 'join'}" data-room-id="${escapeHtml(room.id)}">
+            ${isFulfilled ? '' : `<button class="btn-join ${isJoined ? 'leave' : ''}" data-action="${isJoined ? 'leave' : 'join'}" data-room-id="${escapeHtml(room.id)}">
               ${isJoined ? 'Leave' : 'Join'}
-            </button>
+            </button>`}
             ${isCreator ? `<button class="btn-del" data-action="delete" data-room-id="${escapeHtml(room.id)}">Delete</button>` : ''}
           </div>
         </div>
@@ -353,7 +359,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('rooms-grid')?.addEventListener('click', async (event) => {
     const btn = event.target.closest('button[data-action]');
-    if (!btn) return;
+    if (!btn) {
+      const card = event.target.closest('.room-card[data-room-id]');
+      if (card) {
+        const roomId = card.getAttribute('data-room-id');
+        if (roomId) window.location.href = roomDetailUrl(roomId);
+      }
+      return;
+    }
     const action = btn.getAttribute('data-action');
     const roomId = btn.getAttribute('data-room-id');
     if (!action || !roomId) return;
@@ -376,5 +389,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       toast(err?.message || 'Action failed');
     }
+  });
+
+  document.getElementById('rooms-grid')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target.closest('button[data-action]')) return;
+    const card = event.target.closest('.room-card[data-room-id]');
+    if (!card) return;
+    event.preventDefault();
+    const roomId = card.getAttribute('data-room-id');
+    if (roomId) window.location.href = roomDetailUrl(roomId);
   });
 });
