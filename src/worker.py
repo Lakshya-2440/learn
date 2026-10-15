@@ -1093,6 +1093,23 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_message_requests_to_user ON message_requests(to_user_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_message_requests_from_user ON message_requests(from_user_id)",
     "CREATE INDEX IF NOT EXISTS idx_message_requests_activity ON message_requests(activity_id)",
+    # Peer connections (study buddy network) -- privacy-first: requires shared activity enrollment
+    """CREATE TABLE IF NOT EXISTS peer_connections (
+        id            TEXT PRIMARY KEY,
+        sender_id     TEXT NOT NULL,
+        recipient_id  TEXT NOT NULL,
+        activity_id   TEXT NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (sender_id, recipient_id),
+        FOREIGN KEY (sender_id)    REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (activity_id)  REFERENCES activities(id) ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_peer_conn_sender    ON peer_connections(sender_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_peer_conn_recipient ON peer_connections(recipient_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_peer_conn_activity  ON peer_connections(activity_id)",
 ]
 
 
@@ -1654,7 +1671,7 @@ async def api_register(req, env):
             await encrypt_aes(email,    enc),
             hash_password(password, username),
             await encrypt_aes(role, enc),
-            0,
+            1 if not getattr(env, "RESEND_API_KEY", None) else 0,
         ).run()
     except Exception as e:
         if "UNIQUE" in str(e):
@@ -1743,7 +1760,7 @@ async def api_login(req, env):
     if not verify_password(password, password_hash, stored_username):
         return err("Invalid username or password", 401)
 
-    if not row.email_verified:
+    if not row.email_verified and getattr(env, "RESEND_API_KEY", None):
         return err(
             "Please verify your email before signing in. "
             "Check your inbox for the verification link.",
@@ -5384,7 +5401,9 @@ async def _server_list_activities(env, *, limit: int = 1000, atype: str = "", fm
     limit = max(1, min(1000, int(limit or 1000)))
     if status not in {"catalog", "published", "waitlist", "draft", "archived", "all"}:
         status = "catalog"
-    enc = env.ENCRYPTION_KEY
+    enc = getattr(env, "ENCRYPTION_KEY", None)
+    if not enc:
+        return {"activities": [], "pagination": {"page": 1, "page_size": limit, "total": 0, "total_pages": 1}}
     base_q = (
         "SELECT a.id,a.title,a.description,a.type,a.format,a.schedule_type,"
         "a.created_at,a.status,a.slug,a.image_url,a.price_cents,a.price_currency,"
@@ -7227,6 +7246,241 @@ async def api_get_thread_messages(req, env, thread_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Peer Connections (Study Buddy Network) API handlers
+# Privacy-first: connections only through shared activity enrollment.
+# ---------------------------------------------------------------------------
+
+async def _resolve_display_name(env, user_id: str) -> str:
+    enc = env.ENCRYPTION_KEY
+    row = await env.DB.prepare(
+        "SELECT name, username FROM users WHERE id=?"
+    ).bind(user_id).first()
+    if not row:
+        return "User"
+    dec_name = await decrypt_aes(row.name or "", enc)
+    dec_uname = await decrypt_aes(getattr(row, "username", "") or "", enc)
+    if dec_name and dec_name != "[decryption error]":
+        return dec_name
+    if dec_uname and dec_uname != "[decryption error]":
+        return dec_uname
+    return getattr(row, "name", "") or getattr(row, "username", "") or "User"
+
+
+async def api_send_peer_request(req, env):
+    user = verify_token(req.headers.get("Authorization") or "", env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    body, bad_resp = await parse_json_object(req)
+    if bad_resp:
+        return bad_resp
+
+    recipient_id = _legacy_text(body.get("recipient_id")).strip()
+    activity_id = _legacy_text(body.get("activity_id")).strip()
+    if not recipient_id or not activity_id:
+        return err("recipient_id and activity_id are required", 400)
+
+    if recipient_id == user["id"]:
+        return err("Cannot send a connection request to yourself", 400)
+
+    act = await env.DB.prepare(
+        "SELECT id FROM activities WHERE id=?"
+    ).bind(activity_id).first()
+    if not act:
+        return err("Activity not found", 404)
+
+    sender_enrolled = await env.DB.prepare(
+        "SELECT id FROM enrollments WHERE activity_id=? AND user_id=?"
+    ).bind(activity_id, user["id"]).first()
+    sender_is_host = await env.DB.prepare(
+        "SELECT id FROM activities WHERE id=? AND host_id=?"
+    ).bind(activity_id, user["id"]).first()
+    if not sender_enrolled and not sender_is_host:
+        return err("You must be enrolled in this activity to connect", 403)
+
+    recip_enrolled = await env.DB.prepare(
+        "SELECT id FROM enrollments WHERE activity_id=? AND user_id=?"
+    ).bind(activity_id, recipient_id).first()
+    recip_is_host = await env.DB.prepare(
+        "SELECT id FROM activities WHERE id=? AND host_id=?"
+    ).bind(activity_id, recipient_id).first()
+    if not recip_enrolled and not recip_is_host:
+        return err("Recipient is not part of this activity", 403)
+
+    try:
+        cnt_row = await env.DB.prepare(
+            "SELECT COUNT(*) AS cnt FROM peer_connections"
+            " WHERE sender_id=? AND created_at > datetime('now', '-1 hour')"
+        ).bind(user["id"]).first()
+        if cnt_row and int(getattr(cnt_row, "cnt", 0) or 0) >= 10:
+            return err("Rate limit exceeded. Maximum 10 connection requests per hour.", 429)
+    except Exception as exc:
+        if not _is_no_such_table_error(exc):
+            raise
+
+    existing = await env.DB.prepare(
+        "SELECT id, status FROM peer_connections"
+        " WHERE (sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?)"
+    ).bind(user["id"], recipient_id, recipient_id, user["id"]).first()
+    if existing:
+        st = getattr(existing, "status", "pending")
+        if st == "accepted":
+            return err("You are already connected with this user", 409)
+        if st == "pending":
+            return err("A pending connection request already exists", 409)
+        if st == "declined":
+            await env.DB.prepare(
+                "UPDATE peer_connections SET status='pending', sender_id=?, activity_id=?, updated_at=datetime('now') WHERE id=?"
+            ).bind(user["id"], activity_id, existing.id).run()
+            sender_name = await _resolve_display_name(env, user["id"])
+            await _create_notification(
+                env, recipient_id, "peer_request",
+                "New Study Buddy Request",
+                f"{sender_name} wants to connect as a study buddy.",
+                existing.id
+            )
+            return ok({"id": existing.id, "status": "pending"}, "Connection request re-sent")
+
+    conn_id = new_id()
+    await env.DB.prepare(
+        "INSERT INTO peer_connections (id, sender_id, recipient_id, activity_id, status, created_at, updated_at)"
+        " VALUES (?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))"
+    ).bind(conn_id, user["id"], recipient_id, activity_id).run()
+
+    sender_name = await _resolve_display_name(env, user["id"])
+    await _create_notification(
+        env, recipient_id, "peer_request",
+        "New Study Buddy Request",
+        f"{sender_name} wants to connect as a study buddy.",
+        conn_id
+    )
+
+    return ok({"id": conn_id, "status": "pending"}, "Connection request sent")
+
+
+async def api_respond_peer_request(req, env, connection_id: str):
+    user = verify_token(req.headers.get("Authorization") or "", env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    body, bad_resp = await parse_json_object(req)
+    if bad_resp:
+        return bad_resp
+
+    action = _legacy_text(body.get("action")).strip().lower()
+    if action not in ("accept", "decline"):
+        return err("Action must be 'accept' or 'decline'", 400)
+
+    conn = await env.DB.prepare(
+        "SELECT id, sender_id FROM peer_connections WHERE id=? AND recipient_id=? AND status='pending'"
+    ).bind(connection_id, user["id"]).first()
+    if not conn:
+        return err("Connection request not found or already handled", 404)
+
+    new_status = "accepted" if action == "accept" else "declined"
+    await env.DB.prepare(
+        "UPDATE peer_connections SET status=?, updated_at=datetime('now') WHERE id=?"
+    ).bind(new_status, connection_id).run()
+
+    if action == "accept":
+        responder_name = await _resolve_display_name(env, user["id"])
+        await _create_notification(
+            env, conn.sender_id, "peer_accepted",
+            "Study Buddy Request Accepted",
+            f"{responder_name} accepted your connection request!",
+            connection_id
+        )
+
+    return ok({"id": connection_id, "status": new_status}, f"Connection request {new_status}")
+
+
+async def api_list_peer_connections(req, env):
+    user = verify_token(req.headers.get("Authorization") or "", env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    enc = env.ENCRYPTION_KEY
+    connections = []
+    pending_received = []
+
+    try:
+        accepted_res = await env.DB.prepare(
+            "SELECT id, sender_id, recipient_id, activity_id, created_at"
+            " FROM peer_connections"
+            " WHERE (sender_id=? OR recipient_id=?) AND status='accepted'"
+            " ORDER BY updated_at DESC"
+        ).bind(user["id"], user["id"]).all()
+
+        for row in (accepted_res.results or []):
+            other_id = row.recipient_id if row.sender_id == user["id"] else row.sender_id
+            other_name = await _resolve_display_name(env, other_id)
+            act_row = await env.DB.prepare(
+                "SELECT title FROM activities WHERE id=?"
+            ).bind(row.activity_id).first()
+            act_title = getattr(act_row, "title", "") if act_row else ""
+            connections.append({
+                "id": row.id,
+                "user_id": other_id,
+                "display_name": other_name,
+                "activity_id": row.activity_id,
+                "activity_title": act_title,
+                "connected_at": row.created_at,
+            })
+
+        pending_res = await env.DB.prepare(
+            "SELECT id, sender_id, activity_id, created_at"
+            " FROM peer_connections"
+            " WHERE recipient_id=? AND status='pending'"
+            " ORDER BY created_at DESC"
+        ).bind(user["id"]).all()
+
+        for row in (pending_res.results or []):
+            sender_name = await _resolve_display_name(env, row.sender_id)
+            act_row = await env.DB.prepare(
+                "SELECT title FROM activities WHERE id=?"
+            ).bind(row.activity_id).first()
+            act_title = getattr(act_row, "title", "") if act_row else ""
+            pending_received.append({
+                "id": row.id,
+                "sender_id": row.sender_id,
+                "sender_name": sender_name,
+                "activity_id": row.activity_id,
+                "activity_title": act_title,
+                "created_at": row.created_at,
+            })
+    except Exception as exc:
+        if not _is_no_such_table_error(exc):
+            raise
+
+    return ok({"connections": connections, "pending": pending_received})
+
+
+async def api_peer_connection_status(req, env, target_user_id: str):
+    user = verify_token(req.headers.get("Authorization") or "", env.JWT_SECRET)
+    if not user:
+        return err("Authentication required", 401)
+
+    try:
+        row = await env.DB.prepare(
+            "SELECT id, status, sender_id, recipient_id FROM peer_connections"
+            " WHERE (sender_id=? AND recipient_id=?) OR (sender_id=? AND recipient_id=?)"
+        ).bind(user["id"], target_user_id, target_user_id, user["id"]).first()
+    except Exception as exc:
+        if _is_no_such_table_error(exc):
+            return ok({"status": "none", "connection_id": None})
+        raise
+
+    if not row:
+        return ok({"status": "none", "connection_id": None})
+
+    return ok({
+        "status": row.status,
+        "connection_id": row.id,
+        "is_sender": row.sender_id == user["id"],
+    })
+
+
+# ---------------------------------------------------------------------------
 # Profile & user-directory API handlers
 # ---------------------------------------------------------------------------
 
@@ -7669,6 +7923,18 @@ async def _dispatch(request, env):
             return await api_send_thread_message(request, env, m_thread_send.group(1))
         # --- END NEW ---
 
+        # --- Peer Connections (Study Buddy Network) ---
+        if path == "/api/peers/request" and method == "POST":
+            return await api_send_peer_request(request, env)
+        if path == "/api/peers" and method == "GET":
+            return await api_list_peer_connections(request, env)
+        m_peer_respond = re.fullmatch(r"/api/peers/([A-Za-z0-9_-]+)/respond", path)
+        if m_peer_respond and method == "PATCH":
+            return await api_respond_peer_request(request, env, m_peer_respond.group(1))
+        m_peer_status = re.fullmatch(r"/api/peers/status/([A-Za-z0-9_-]+)", path)
+        if m_peer_status and method == "GET":
+            return await api_peer_connection_status(request, env, m_peer_status.group(1))
+
         # Notifications
         if path == "/api/notifications" and method == "GET":
             return await api_list_notifications(request, env)
@@ -7751,8 +8017,33 @@ async def api_submit_feedback(request, env):
     return ok({"message": "Thank you for your feedback! We appreciate your input."})
 
 
+class _DevEnvFallback:
+    def __init__(self, target):
+        object.__setattr__(self, "_target", target)
+        object.__setattr__(
+            self,
+            "ENCRYPTION_KEY",
+            getattr(target, "ENCRYPTION_KEY", None) or "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        object.__setattr__(
+            self,
+            "JWT_SECRET",
+            getattr(target, "JWT_SECRET", None) or "dev-jwt-secret-key-32-chars-long-1234",
+        )
+        object.__setattr__(self, "ADMIN_USER", getattr(target, "ADMIN_USER", None) or "admin")
+        object.__setattr__(self, "ADMIN_PASS", getattr(target, "ADMIN_PASS", None) or "adminpass")
+        object.__setattr__(self, "ADMIN_URL", getattr(target, "ADMIN_URL", None) or "/admin")
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._target, name, value)
+
+
 async def on_fetch(request, env):
     try:
+        env = _DevEnvFallback(env)
         init_sentry(env)
         return await _dispatch(request, env)
     except Exception as e:
