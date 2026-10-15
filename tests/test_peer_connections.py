@@ -92,6 +92,23 @@ class TestPeerConnections:
         assert r.status == 403
         assert "not part of" in _parse(r)["error"].lower()
 
+    async def test_send_request_recipient_disallows_buddy_requests(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(id="act-1")),
+            make_stmt(first=MockRow(id="enr-1")),
+            make_stmt(first=None),
+            make_stmt(first=MockRow(id="enr-2")),
+            make_stmt(first=None),
+            make_stmt(first=MockRow(allow_buddy_requests=0)),
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"recipient_id": "usr-2", "activity_id": "act-1"}, token=token),
+            env,
+        )
+        assert r.status == 403
+        assert "not accepting buddy requests" in _parse(r)["error"].lower()
+
     async def test_send_request_success(self):
         token = _make_token(uid="usr-1")
         env = make_env(db=MockDB([
@@ -100,6 +117,7 @@ class TestPeerConnections:
             make_stmt(first=None),
             make_stmt(first=MockRow(id="enr-2")),
             make_stmt(first=None),
+            make_stmt(first=MockRow(allow_buddy_requests=1)),
             make_stmt(first=MockRow(cnt=0)),
             make_stmt(first=None),
             make_stmt(),
@@ -124,6 +142,7 @@ class TestPeerConnections:
             make_stmt(first=None),
             make_stmt(first=MockRow(id="enr-2")),
             make_stmt(first=None),
+            make_stmt(first=MockRow(allow_buddy_requests=1)),
             make_stmt(first=MockRow(cnt=0)),
             make_stmt(first=MockRow(id="conn-1", status="accepted")),
         ]))
@@ -141,6 +160,7 @@ class TestPeerConnections:
             make_stmt(first=None),
             make_stmt(first=MockRow(id="enr-2")),
             make_stmt(first=None),
+            make_stmt(first=MockRow(allow_buddy_requests=1)),
             make_stmt(first=MockRow(cnt=10)),
         ]))
         r = await worker.api_send_peer_request(
@@ -257,6 +277,7 @@ class TestPeerConnections:
     async def test_status_none(self):
         token = _make_token(uid="usr-1")
         env = make_env(db=MockDB([
+            make_stmt(first=MockRow(allow_buddy_requests=0)),
             make_stmt(first=None),
         ]))
         r = await worker.api_peer_connection_status(
@@ -265,10 +286,12 @@ class TestPeerConnections:
         assert r.status == 200
         data = _parse(r)
         assert data["data"]["status"] == "none"
+        assert data["data"]["allow_buddy_requests"] is False
 
     async def test_status_connected(self):
         token = _make_token(uid="usr-1")
         env = make_env(db=MockDB([
+            make_stmt(first=MockRow(allow_buddy_requests=1)),
             make_stmt(first=MockRow(id="conn-1", status="accepted", sender_id="usr-1", recipient_id="usr-2")),
         ]))
         r = await worker.api_peer_connection_status(
@@ -278,3 +301,129 @@ class TestPeerConnections:
         data = _parse(r)
         assert data["data"]["status"] == "accepted"
         assert data["data"]["is_sender"] is True
+        assert data["data"]["allow_buddy_requests"] is True
+
+    async def test_delete_connection_unauthenticated(self):
+        env = make_env()
+        r = await worker.api_delete_peer_connection(
+            self._req("DELETE", "/api/peers/conn-1"), env, "conn-1"
+        )
+        assert r.status == 401
+
+    async def test_delete_connection_not_found(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=None),
+        ]))
+        r = await worker.api_delete_peer_connection(
+            self._req("DELETE", "/api/peers/conn-1", token=token), env, "conn-1"
+        )
+        assert r.status == 404
+
+    async def test_delete_connection_success(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(id="conn-1", sender_id="usr-1", recipient_id="usr-2")),
+            make_stmt(),
+        ]))
+        r = await worker.api_delete_peer_connection(
+            self._req("DELETE", "/api/peers/conn-1", token=token), env, "conn-1"
+        )
+        assert r.status == 200
+        data = _parse(r)
+        assert data["data"]["deleted"] is True
+
+    async def test_send_peer_request_by_email_success(self):
+        token = _make_token(uid="usr-1")
+        target_user = MockRow(id="usr-2")
+        target_prof = MockRow(allow_email_buddy_requests=1)
+        sender_row = MockRow(name="Alice", username="alice")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(cnt=0)),    # rate limit check
+            make_stmt(first=target_user),       # lookup target user
+            make_stmt(first=target_prof),       # lookup target profile
+            make_stmt(first=None),              # check existing connection
+            make_stmt(),                        # insert peer connection
+            make_stmt(first=sender_row),        # resolve sender display name
+            make_stmt(),                        # create notification
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"email": "bob@example.com"}, token=token),
+            env,
+        )
+        assert r.status == 200
+        data = _parse(r)
+        assert data["message"] == "We will send a request if that user exists"
+
+    async def test_send_peer_request_by_email_target_toggle_off(self):
+        token = _make_token(uid="usr-1")
+        target_user = MockRow(id="usr-2")
+        target_prof = MockRow(allow_email_buddy_requests=0) # toggle off!
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(cnt=0)),    # rate limit check
+            make_stmt(first=target_user),       # lookup target user
+            make_stmt(first=target_prof),       # lookup target profile
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"email": "bob@example.com"}, token=token),
+            env,
+        )
+        assert r.status == 200
+        data = _parse(r)
+        # Does not confirm whether sent or user exists:
+        assert data["message"] == "We will send a request if that user exists"
+
+    async def test_send_peer_request_by_email_nonexistent_user(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(cnt=0)),    # rate limit check
+            make_stmt(first=None),              # user lookup returns none
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"email": "unknown@example.com"}, token=token),
+            env,
+        )
+        assert r.status == 200
+        data = _parse(r)
+        assert data["message"] == "We will send a request if that user exists"
+
+    async def test_send_peer_request_by_email_self(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(cnt=0)),    # rate limit check
+            make_stmt(first=MockRow(id="usr-1")), # lookup returns self
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"email": "myself@example.com"}, token=token),
+            env,
+        )
+        assert r.status == 200
+        data = _parse(r)
+        assert data["message"] == "We will send a request if that user exists"
+
+    async def test_send_peer_request_by_email_rate_limited(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=MockRow(cnt=10)),    # rate limit exceeded
+        ]))
+        r = await worker.api_send_peer_request(
+            self._req("POST", "/api/peers/request", {"email": "target@example.com"}, token=token),
+            env,
+        )
+        assert r.status == 429
+        assert "Rate limit" in _parse(r)["error"]
+
+    async def test_profile_patch_allow_email_buddy_requests(self):
+        token = _make_token(uid="usr-1")
+        env = make_env(db=MockDB([
+            make_stmt(), # ensure user profile
+            make_stmt(), # update user_profiles SET allow_email_buddy_requests=?
+        ]))
+        r = await worker.api_profile(
+            self._req("PATCH", "/api/profile", {"allow_email_buddy_requests": True}, token=token),
+            env,
+        )
+        assert r.status == 200
+        data = _parse(r)
+        assert data["data"]["allow_email_buddy_requests"] is True
+

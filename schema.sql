@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS peer_connections (
     id            TEXT PRIMARY KEY,
     sender_id     TEXT NOT NULL,
     recipient_id  TEXT NOT NULL,
-    activity_id   TEXT NOT NULL,
+    activity_id   TEXT,
     status        TEXT NOT NULL DEFAULT 'pending',
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
