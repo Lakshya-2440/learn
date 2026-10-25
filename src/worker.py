@@ -2514,7 +2514,6 @@ async def api_get_activity(activity_ref: str, req, env):
             "total_sessions": len(sessions),
             "attended": sum(1 for s in sessions if s.get("my_attendance") == "attended"),
             "missed": sum(1 for s in sessions if s.get("my_attendance") == "missed"),
-            "excused": sum(1 for s in sessions if s.get("my_attendance") == "excused"),
             "percentage": (
                 round((sum(1 for s in sessions if s.get("my_attendance") == "attended") / len(sessions)) * 100, 1)
                 if len(sessions) > 0
@@ -3743,7 +3742,6 @@ async def api_get_session_attendance(req, env, session_id: str):
     seen_user_ids = set()
     attended_cnt = 0
     missed_cnt = 0
-    excused_cnt = 0
 
     for r in (enr_res.results or []):
         seen_user_ids.add(r.user_id)
@@ -3754,8 +3752,6 @@ async def api_get_session_attendance(req, env, session_id: str):
             attended_cnt += 1
         elif st == "missed":
             missed_cnt += 1
-        elif st == "excused":
-            excused_cnt += 1
 
         records.append({
             "user_id": r.user_id,
@@ -3783,8 +3779,6 @@ async def api_get_session_attendance(req, env, session_id: str):
                 attended_cnt += 1
             elif st == "missed":
                 missed_cnt += 1
-            elif st == "excused":
-                excused_cnt += 1
             records.append({
                 "user_id": r.user_id,
                 "name": name or username or "Participant",
@@ -3794,7 +3788,7 @@ async def api_get_session_attendance(req, env, session_id: str):
             })
 
     total = len(records)
-    registered_cnt = total - (attended_cnt + missed_cnt + excused_cnt)
+    registered_cnt = total - (attended_cnt + missed_cnt)
     attendance_rate = round((attended_cnt / total) * 100, 1) if total > 0 else 0.0
 
     return json_resp({
@@ -3808,7 +3802,6 @@ async def api_get_session_attendance(req, env, session_id: str):
             "total": total,
             "attended": attended_cnt,
             "missed": missed_cnt,
-            "excused": excused_cnt,
             "registered": registered_cnt,
             "attendance_rate": attendance_rate,
         }
@@ -3853,7 +3846,7 @@ async def api_record_session_attendance(req, env, session_id: str):
     if not isinstance(records, list):
         return err("Attendance records must be a list", 400)
 
-    valid_statuses = {"attended", "missed", "excused", "registered", "unmarked"}
+    valid_statuses = {"attended", "missed", "registered", "unmarked"}
     records_to_save = []
     for item in records:
         if not isinstance(item, dict):
@@ -3863,7 +3856,7 @@ async def api_record_session_attendance(req, env, session_id: str):
         if not uid:
             return err("user_id is required for each attendance record", 400)
         if raw_status not in valid_statuses:
-            return err(f"Invalid status '{item.get('status')}'. Must be one of: attended, missed, excused, registered", 400)
+            return err(f"Invalid status '{item.get('status')}'. Must be one of: attended, missed, registered", 400)
         records_to_save.append((uid, raw_status))
 
     saved_count = 0

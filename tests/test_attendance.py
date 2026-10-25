@@ -116,7 +116,7 @@ class TestPostSessionAttendance:
         req = self._req("s-1", [{"user_id": "u-1", "status": "present"}], token=tok)
         r = await worker.api_record_session_attendance(req, env, "s-1")
         assert r.status == 400
-        assert "Must be one of: attended, missed, excused" in _parse(r).get("error", "")
+        assert "Must be one of: attended, missed, registered" in _parse(r).get("error", "")
 
     async def test_host_successfully_marks_attendance_direct_list(self):
         tok = _token(uid="host-1")
@@ -130,7 +130,7 @@ class TestPostSessionAttendance:
         payload = [
             {"user_id": "u-1", "status": "attended"},
             {"user_id": "u-2", "status": "missed"},
-            {"user_id": "u-3", "status": "excused"},
+            {"user_id": "u-3", "status": "attended"},
         ]
         req = self._req("s-1", payload, token=tok)
         r = await worker.api_record_session_attendance(req, env, "s-1")
@@ -141,7 +141,7 @@ class TestPostSessionAttendance:
         assert len(data["records"]) == 3
         assert data["records"][0] == {"user_id": "u-1", "status": "attended"}
         assert data["records"][1] == {"user_id": "u-2", "status": "missed"}
-        assert data["records"][2] == {"user_id": "u-3", "status": "excused"}
+        assert data["records"][2] == {"user_id": "u-3", "status": "attended"}
 
     async def test_host_successfully_marks_attendance_object_wrapper(self):
         tok = _token(uid="host-1")
@@ -267,7 +267,6 @@ class TestGetSessionAttendance:
         assert summary["total"] == 3
         assert summary["attended"] == 1
         assert summary["missed"] == 1
-        assert summary["excused"] == 0
         assert summary["registered"] == 1
         assert summary["attendance_rate"] == 33.3
 

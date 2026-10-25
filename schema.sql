@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS session_attendance (
     id         TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     user_id    TEXT NOT NULL,
-    status     TEXT NOT NULL DEFAULT 'registered', -- registered | attended | missed | excused
+    status     TEXT NOT NULL DEFAULT 'registered', -- registered | attended | missed
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT,
     UNIQUE (session_id, user_id),

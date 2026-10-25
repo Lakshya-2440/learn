@@ -505,8 +505,6 @@
           attendanceBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"><i class="fas fa-check-circle text-emerald-600 dark:text-emerald-400"></i>Attended</span>';
         } else if (s.my_attendance === 'missed') {
           attendanceBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300"><i class="fas fa-times-circle text-rose-600 dark:text-rose-400"></i>Missed</span>';
-        } else if (s.my_attendance === 'excused') {
-          attendanceBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"><i class="fas fa-info-circle text-amber-600 dark:text-amber-400"></i>Excused</span>';
         } else {
           attendanceBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded"><i class="fas fa-clock"></i>Registered</span>';
         }
@@ -890,7 +888,7 @@
         user_id: r.user_id,
         name: r.name || r.username || 'Student',
         username: r.username || '',
-        status: (r.status === 'attended' || r.status === 'missed' || r.status === 'excused') ? r.status : 'registered'
+        status: (r.status === 'attended' || r.status === 'missed') ? r.status : 'registered'
       }));
 
       renderAttendanceRegister();
@@ -932,7 +930,6 @@
     list.innerHTML = attendanceRegisterState.map(st => {
       const isAttended = st.status === 'attended';
       const isMissed = st.status === 'missed';
-      const isExcused = st.status === 'excused';
 
       return `
         <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -951,9 +948,6 @@
             </button>
             <button type="button" onclick="setStudentStatus('${esc(st.user_id)}', 'missed')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1 ${isMissed ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-400/50' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-rose-50 dark:hover:bg-rose-950/30'}">
               <i class="fas fa-times text-[10px]"></i><span>Missed</span>
-            </button>
-            <button type="button" onclick="setStudentStatus('${esc(st.user_id)}', 'excused')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1 ${isExcused ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-400/50' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'}">
-              <i class="fas fa-info-circle text-[10px]"></i><span>Excused</span>
             </button>
           </div>
         </div>
@@ -983,14 +977,12 @@
     const total = attendanceRegisterState.length;
     const attended = attendanceRegisterState.filter(s => s.status === 'attended').length;
     const missed = attendanceRegisterState.filter(s => s.status === 'missed').length;
-    const excused = attendanceRegisterState.filter(s => s.status === 'excused').length;
     const rate = total > 0 ? Math.round((attended / total) * 100) : 0;
 
     container.innerHTML = `
       <span class="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300 font-semibold"><i class="fas fa-users text-teal-500"></i>Total: ${total}</span>
       <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold"><i class="fas fa-check-circle"></i>${attended} Attended</span>
       <span class="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 font-bold"><i class="fas fa-times-circle"></i>${missed} Missed</span>
-      <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold"><i class="fas fa-info-circle"></i>${excused} Excused</span>
       <span class="inline-flex items-center gap-1 bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200 px-2 py-0.5 rounded-full font-bold ml-auto">${rate}% Rate</span>
     `;
   }
@@ -1002,7 +994,7 @@
 
     const payload = attendanceRegisterState.map(s => ({
       user_id: s.user_id,
-      status: (s.status === 'attended' || s.status === 'missed' || s.status === 'excused') ? s.status : 'registered'
+      status: (s.status === 'attended' || s.status === 'missed') ? s.status : 'registered'
     }));
 
     if (saveBtn) {
