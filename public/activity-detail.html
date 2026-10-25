@@ -466,7 +466,12 @@
     }
     sessCard.classList.remove('hidden');
 
-    const icsUrl = `/api/activities/${encodeURIComponent(data.slug || data.id)}/calendar.ics` + (token ? `?token=${encodeURIComponent(token)}` : '');
+    const act = data.activity || {};
+    const actRef = act.slug || act.id || data.slug || data.id || '';
+    const actTitle = act.title || data.title || 'Activity';
+    const actDesc = act.description || data.description || '';
+
+    const icsUrl = `/api/activities/${encodeURIComponent(actRef)}/calendar.ics` + (token ? `?token=${encodeURIComponent(token)}` : '');
     const icsBtn = document.getElementById('btn-export-ics');
     if (icsBtn) {
       icsBtn.href = icsUrl;
@@ -475,8 +480,8 @@
     const firstSession = data.sessions[0];
     const gcalBtn = document.getElementById('btn-google-calendar');
     if (gcalBtn && firstSession) {
-      const gcalTitle = `${data.title || 'Activity'} - ${firstSession.title || 'Session'}`;
-      const gcalDetails = `${data.description ? data.description.slice(0, 300) : ''}\n\nView on Alpha One Labs: ${window.location.origin}/activity/${encodeURIComponent(data.slug || data.id)}`;
+      const gcalTitle = `${actTitle} - ${firstSession.title || 'Session'}`;
+      const gcalDetails = `${actDesc ? actDesc.slice(0, 300) : ''}\n\nView on Alpha One Labs: ${window.location.origin}/activity/${encodeURIComponent(actRef)}`;
       const gcalLoc = firstSession.location || 'Alpha One Labs';
       gcalBtn.href = formatGoogleCalendarUrl(gcalTitle, firstSession.start_time, firstSession.end_time, gcalDetails, gcalLoc);
     }
@@ -484,10 +489,10 @@
     ul.innerHTML = data.sessions.map(s => {
       const locked = !data.is_enrolled && !data.is_host;
       const sessionGcalUrl = s.start_time ? formatGoogleCalendarUrl(
-        `${data.title || 'Activity'} - ${s.title || 'Session'}`,
+        `${actTitle} - ${s.title || 'Session'}`,
         s.start_time,
         s.end_time,
-        `${s.description || (data.description ? data.description.slice(0, 200) : '')}\n\n${window.location.origin}/activity/${encodeURIComponent(data.slug || data.id)}`,
+        `${s.description || (actDesc ? actDesc.slice(0, 200) : '')}\n\n${window.location.origin}/activity/${encodeURIComponent(actRef)}`,
         locked ? '' : (s.location || '')
       ) : '';
 
@@ -836,6 +841,8 @@
     } catch (err) {
       card.classList.add('hidden');
     }
+  }
+
   // --- Session Attendance Register (Host) & Viewer (Student) ---
   let activeAttendanceSessionId = null;
   let attendanceRegisterState = []; // [{ user_id, name, username, status }]
