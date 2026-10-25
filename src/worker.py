@@ -3853,7 +3853,7 @@ async def api_record_session_attendance(req, env, session_id: str):
     if not isinstance(records, list):
         return err("Attendance records must be a list", 400)
 
-    valid_statuses = {"attended", "missed", "excused"}
+    valid_statuses = {"attended", "missed", "excused", "registered", "unmarked"}
     records_to_save = []
     for item in records:
         if not isinstance(item, dict):
@@ -3863,19 +3863,25 @@ async def api_record_session_attendance(req, env, session_id: str):
         if not uid:
             return err("user_id is required for each attendance record", 400)
         if raw_status not in valid_statuses:
-            return err(f"Invalid status '{item.get('status')}'. Must be one of: attended, missed, excused", 400)
+            return err(f"Invalid status '{item.get('status')}'. Must be one of: attended, missed, excused, registered", 400)
         records_to_save.append((uid, raw_status))
 
     saved_count = 0
     for uid, status in records_to_save:
-        att_id = new_id()
-        await env.DB.prepare(
-            "INSERT INTO session_attendance (id, session_id, user_id, status, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
-            " ON CONFLICT(session_id, user_id) DO UPDATE SET"
-            "   status = excluded.status,"
-            "   updated_at = datetime('now')"
-        ).bind(att_id, session_id, uid, status).run()
+        if status in ("registered", "unmarked"):
+            # Undo / reset attendance mark
+            await env.DB.prepare(
+                "DELETE FROM session_attendance WHERE session_id = ? AND user_id = ?"
+            ).bind(session_id, uid).run()
+        else:
+            att_id = new_id()
+            await env.DB.prepare(
+                "INSERT INTO session_attendance (id, session_id, user_id, status, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+                " ON CONFLICT(session_id, user_id) DO UPDATE SET"
+                "   status = excluded.status,"
+                "   updated_at = datetime('now')"
+            ).bind(att_id, session_id, uid, status).run()
         saved_count += 1
 
     return json_resp({

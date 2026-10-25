@@ -212,6 +212,9 @@
           <button type="button" onclick="bulkSetAttendance('missed')" class="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 font-semibold border border-rose-200 dark:border-rose-800 transition">
             <i class="fas fa-times mr-1"></i>All Missed
           </button>
+          <button type="button" onclick="bulkSetAttendance('registered')" class="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 font-semibold border border-gray-300 dark:border-gray-600 transition" title="Reset all attendance marks">
+            <i class="fas fa-rotate-left mr-1"></i>Reset All
+          </button>
         </div>
       </div>
 
@@ -644,7 +647,8 @@
       return;
     }
     if (data.is_enrolled) {
-      currentEnrollment = data.enrollment || null;
+      const enr = data.enrollment || {};
+      currentEnrollment = enr;
       renderCertificateSection(data);
       document.getElementById('member-card').classList.remove('hidden');
       let attHtml = '';
@@ -996,9 +1000,10 @@
     const statusMsg = document.getElementById('att-status-msg');
     const saveBtn = document.getElementById('btn-save-attendance');
 
-    const payload = attendanceRegisterState
-      .filter(s => s.status === 'attended' || s.status === 'missed' || s.status === 'excused')
-      .map(s => ({ user_id: s.user_id, status: s.status }));
+    const payload = attendanceRegisterState.map(s => ({
+      user_id: s.user_id,
+      status: (s.status === 'attended' || s.status === 'missed' || s.status === 'excused') ? s.status : 'registered'
+    }));
 
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -1026,9 +1031,10 @@
         statusMsg.textContent = '✅ ' + (data.message || 'Attendance saved successfully!');
       }
 
-      setTimeout(() => {
+      setTimeout(async () => {
         closeAttendanceModal();
-      }, 1200);
+        await loadActivityDetail();
+      }, 700);
     } catch (err) {
       if (statusMsg) {
         statusMsg.className = 'text-xs text-rose-600 dark:text-rose-400 font-semibold';

@@ -162,6 +162,28 @@ class TestPostSessionAttendance:
         assert data["success"] is True
         assert data["updated"] == 1
 
+    async def test_host_successfully_undos_attendance_with_registered_status(self):
+        tok = _token(uid="host-1")
+        session_row = MockRow(id="s-1", activity_id="act-1", title="Week 1", host_id="host-1")
+        env = make_env(db=MockDB([
+            make_stmt(first=session_row),  # session check
+            make_stmt(),                   # delete u-1 from session_attendance
+            make_stmt(),                   # delete u-2 from session_attendance
+        ]))
+        payload = [
+            {"user_id": "u-1", "status": "registered"},
+            {"user_id": "u-2", "status": "unmarked"},
+        ]
+        req = self._req("s-1", payload, token=tok)
+        r = await worker.api_record_session_attendance(req, env, "s-1")
+        assert r.status == 200
+        data = _parse(r)
+        assert data["success"] is True
+        assert data["updated"] == 2
+        assert len(data["records"]) == 2
+        assert data["records"][0] == {"user_id": "u-1", "status": "registered"}
+        assert data["records"][1] == {"user_id": "u-2", "status": "unmarked"}
+
 
 # ---------------------------------------------------------------------------
 # GET /api/sessions/:id/attendance
