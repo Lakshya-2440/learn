@@ -680,3 +680,64 @@ class TestClassroomDOSignaling:
         await do.on_webSocketMessage(ws_anon, msg)
         ws_bob.send.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_screen_share_only_one_person_allowed(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        # Alice starts screen share
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "start_screen_share"}))
+        assert do.screen_sharer is not None
+        assert do.screen_sharer["participant_id"] == "alice"
+
+        ws_bob.send.reset_mock()
+        # Bob tries to start screen share while Alice is sharing -> rejected
+        await do.on_webSocketMessage(ws_bob, json.dumps({"type": "start_screen_share"}))
+        assert do.screen_sharer["participant_id"] == "alice"  # Still Alice
+
+        # Bob should receive screen_share_rejected
+        rejected = any(
+            json.loads(c[0][0]).get("type") == "screen_share_rejected"
+            for c in ws_bob.send.call_args_list
+        )
+        assert rejected is True
+
+    @pytest.mark.asyncio
+    async def test_screen_share_stop_broadcasts(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "start_screen_share"}))
+        assert do.screen_sharer["participant_id"] == "alice"
+
+        ws_bob.send.reset_mock()
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "stop_screen_share"}))
+        assert do.screen_sharer is None
+
+        stopped = any(
+            json.loads(c[0][0]).get("type") == "screen_share_stopped"
+            and json.loads(c[0][0]).get("participant_id") == "alice"
+            for c in ws_bob.send.call_args_list
+        )
+        assert stopped is True
+
+    @pytest.mark.asyncio
+    async def test_reaction_broadcasts_to_all(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "reaction", "emoji": "🎉"}))
+
+        reaction_bob = any(
+            json.loads(c[0][0]).get("type") == "reaction"
+            and json.loads(c[0][0]).get("emoji") == "🎉"
+            and json.loads(c[0][0]).get("participant_id") == "alice"
+            for c in ws_bob.send.call_args_list
+        )
+        assert reaction_bob is True
+
+
+

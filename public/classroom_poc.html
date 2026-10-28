@@ -123,6 +123,17 @@
         .fade-in-up { animation: fadeInUp .3s ease-out; }
         @keyframes slideIn { from { transform:translateX(100%); } to { transform:translateX(0); } }
         .slide-in { animation: slideIn .3s ease-out; }
+        @keyframes floatReaction {
+            0% { transform: translateY(0) scale(0.6); opacity: 1; }
+            50% { transform: translateY(-70px) scale(1.4); opacity: 0.95; }
+            100% { transform: translateY(-150px) scale(1.1); opacity: 0; }
+        }
+        .float-reaction {
+            position: absolute;
+            animation: floatReaction 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            pointer-events: none;
+            user-select: none;
+        }
     </style>
 </head>
 
@@ -213,10 +224,22 @@
                 <div class="absolute inset-0" style="background: linear-gradient(180deg, #E6E2D7 0%, #E6E2D7 38%, #C7B299 38%, #C7B299 100%);"></div>
                 <!-- Wainscoting line -->
                 <div class="absolute left-0 right-0" style="top:38%; height:4px; background:#a0a0a0;"></div>
-                <!-- Blackboard -->
-                <div class="absolute left-1/2 -translate-x-1/2 rounded-lg shadow-lg flex items-center justify-center"
-                     style="top:3%; width:40%; height:14%; background:#005C53; border:4px solid #3a3a3a;">
-                    <span class="text-white/60 text-xs font-medium tracking-wider uppercase select-none">Blackboard</span>
+                <!-- Blackboard / Live Screen Share Canvas -->
+                <div id="classroomBlackboard" class="absolute left-1/2 -translate-x-1/2 rounded-lg shadow-lg flex items-center justify-center overflow-hidden transition-all duration-300"
+                     style="top:3%; width:44%; height:15%; background:#005C53; border:4px solid #3a3a3a; z-index:30;">
+                    <div id="blackboardDefault" class="flex flex-col items-center justify-center">
+                        <span class="text-white/60 text-xs font-medium tracking-wider uppercase select-none">Blackboard</span>
+                    </div>
+                    <div id="blackboardPresentation" class="hidden absolute inset-0 bg-black flex flex-col items-center justify-center">
+                        <video id="presentationVideo" autoplay playsinline muted class="w-full h-full object-contain"></video>
+                        <div class="absolute bottom-1 left-2 flex items-center gap-1.5 px-2 py-0.5 bg-black/75 rounded text-[10px] text-white backdrop-blur-sm">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span id="presentationPresenterLabel">Live Screen Share</span>
+                        </div>
+                        <button id="btnExpandPresentation" type="button" class="absolute top-1 right-1 px-1.5 py-0.5 bg-gray-900/80 hover:bg-gray-800 text-white rounded text-xs transition border border-gray-700" title="Expand screen share">
+                            ⛶ Fullscreen
+                        </button>
+                    </div>
                 </div>
                 <!-- Teacher desk -->
                 <div class="absolute left-1/2 -translate-x-1/2 rounded shadow-md flex items-center justify-center"
@@ -227,6 +250,8 @@
                 <div id="desksContainer" class="absolute left-[3%] right-[3%]" style="top:39%; bottom:3%;"></div>
                 <!-- Other participant avatars -->
                 <div id="avatarLayer" class="absolute inset-0 pointer-events-none" style="z-index:40;"></div>
+                <!-- Floating Emojis Layer -->
+                <div id="floatingReactionsLayer" class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index:90;"></div>
                 <!-- Current user character -->
                 <div id="myCharacter" class="absolute transition-all duration-75 ease-linear" style="z-index:50; display:none;">
                     <div class="flex flex-col items-center">
@@ -240,38 +265,90 @@
                     </div>
                 </div>
             </div>
-            <!-- Controls bar -->
-            <div class="flex flex-wrap items-center gap-3 px-3 py-2 bg-gray-900/60 rounded-lg border border-gray-800 text-xs text-gray-400 shrink-0">
-                <div class="flex items-center gap-1.5">
-                    <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700">↑</kbd>
-                    <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700">↓</kbd>
-                    <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700">←</kbd>
-                    <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700">→</kbd>
-                    <span class="ml-1">Move</span>
-                </div>
-                <div class="hidden sm:flex items-center gap-1.5">
-                    <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700">E</kbd>
-                    <span>Sit/Stand</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="btnThumbsUp" type="button" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition" title="Send thumbs-up reaction">
-                        👍
-                    </button>
-                    <button id="btnRaiseHand" type="button" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition" title="Toggle raised hand">
-                        ✋
-                    </button>
-                </div>
-                <div class="flex items-center gap-1.5 border-l border-gray-700/60 pl-2">
-                    <button id="btnToggleMic" type="button" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition flex items-center gap-1.5" title="Toggle microphone">
-                        <span id="micIcon">🎙️</span>
-                        <span id="micText" class="hidden md:inline">Mute</span>
-                    </button>
-                    <button id="btnToggleCam" type="button" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition flex items-center gap-1.5" title="Toggle camera">
-                        <span id="camIcon">📷</span>
-                        <span id="camText" class="hidden md:inline">Stop Video</span>
+
+            <!-- Meet Controls & Popups Area -->
+            <div class="relative flex flex-col items-center shrink-0 w-full">
+                <!-- Device Selection Menu (Screenshot 2) -->
+                <div id="deviceMenuTray" class="hidden mb-2 px-3 py-2 bg-[#1c1d1f] border border-gray-700/80 rounded-2xl shadow-2xl flex flex-wrap items-center justify-center gap-2.5 text-xs text-gray-200 z-50 backdrop-blur-md">
+                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
+                        <span class="text-sm">🎙️</span>
+                        <select id="selectMicDevice" aria-label="Microphone device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
+                        <span class="text-sm">🔊</span>
+                        <select id="selectSpeakerDevice" aria-label="Speaker device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
+                        <span class="text-sm">📹</span>
+                        <select id="selectCamDevice" aria-label="Camera device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                    </div>
+                    <button id="btnCloseDeviceMenu" type="button" class="p-1 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition" title="Close device options">
+                        ✕
                     </button>
                 </div>
-                <div class="w-full sm:w-auto sm:ml-auto text-gray-500">Virtual Classroom</div>
+
+                <!-- Reactions Menu (Screenshot 3) -->
+                <div id="reactionsTray" class="hidden mb-2 px-3 py-1.5 bg-[#1c1d1f] border border-gray-700/80 rounded-full shadow-2xl flex items-center gap-1.5 text-sm z-50 backdrop-blur-md">
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="💖" title="Love">💖</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="👍" title="Thumbs Up">👍</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="🎉" title="Celebrate">🎉</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="👏" title="Clap">👏</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="😂" title="Laugh">😂</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="😮" title="Surprised">😮</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="😢" title="Sad">😢</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="🤔" title="Thinking">🤔</button>
+                    <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="👎" title="Thumbs Down">👎</button>
+                </div>
+
+                <!-- Google Meet Control Bar (Screenshot 1) -->
+                <div id="meetControlBar" class="flex items-center justify-center gap-2 sm:gap-3 px-4 py-2 bg-[#1c1d1f] border border-gray-800 rounded-2xl sm:rounded-full shadow-2xl mx-auto w-fit">
+                    <!-- Audio Split Pill -->
+                    <div class="flex items-center bg-[#2b2c2f] rounded-full border border-gray-700/60 overflow-hidden">
+                        <button id="btnMicOptions" type="button" class="px-2.5 py-2 hover:bg-white/10 text-gray-300 hover:text-white transition flex items-center justify-center border-r border-gray-700/40 text-xs font-bold" title="Microphone options">
+                            ···
+                        </button>
+                        <button id="btnToggleMic" type="button" class="px-3.5 py-2 hover:bg-white/10 text-white transition flex items-center justify-center" title="Toggle microphone">
+                            <span id="micIcon" class="text-base">🎙️</span>
+                        </button>
+                    </div>
+
+                    <!-- Camera Split Pill -->
+                    <div class="flex items-center bg-[#2b2c2f] rounded-full border border-gray-700/60 overflow-hidden">
+                        <button id="btnCamOptions" type="button" class="px-2.5 py-2 hover:bg-white/10 text-gray-300 hover:text-white transition flex items-center justify-center border-r border-gray-700/40 text-[10px] font-bold" title="Camera options">
+                            ▲
+                        </button>
+                        <button id="btnToggleCam" type="button" class="px-3.5 py-2 hover:bg-white/10 text-white transition flex items-center justify-center" title="Toggle camera">
+                            <span id="camIcon" class="text-base">📹</span>
+                        </button>
+                    </div>
+
+                    <!-- Screen Share Button -->
+                    <button id="btnToggleScreenShare" type="button" class="w-10 h-10 rounded-full bg-[#2b2c2f] hover:bg-white/10 text-white flex items-center justify-center border border-gray-700/60 transition" title="Present now (Screen Share)">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2H0c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2h-4zM4 5h16v11H4V5zm8 10l4-4h-3V8h-2v3H8l4 4z"/></svg>
+                    </button>
+
+                    <!-- Smile Reactions Button -->
+                    <button id="btnReactions" type="button" class="w-10 h-10 rounded-full bg-[#2b2c2f] hover:bg-white/10 text-white flex items-center justify-center border border-gray-700/60 transition text-lg" title="Send reaction">
+                        😊
+                    </button>
+
+                    <!-- (Captions button explicitly omitted as requested) -->
+
+                    <!-- Raise Hand Button -->
+                    <button id="btnRaiseHand" type="button" class="w-10 h-10 rounded-full bg-[#2b2c2f] hover:bg-white/10 text-white flex items-center justify-center border border-gray-700/60 transition" title="Raise hand">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12.5 2c.83 0 1.5.67 1.5 1.5v7.25c0 .14-.11.25-.25.25s-.25-.11-.25-.25V3.5c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v6.75c0 .14-.11.25-.25.25s-.25-.11-.25-.25V2c0-.83-.67-1.5-1.5-1.5S7 1.17 7 2v8.25c0 .14-.11.25-.25.25s-.25-.11-.25-.25V4c0-.83-.67-1.5-1.5-1.5S3.5 3.17 3.5 4v9.5c0 4.14 3.36 7.5 7.5 7.5s7.5-3.36 7.5-7.5V7c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v3.75c0 .14-.11.25-.25.25s-.25-.11-.25-.25V3.5c0-.83-.67-1.5-1.5-1.5z"/></svg>
+                    </button>
+
+                    <!-- More Options / Participants Button -->
+                    <button id="btnMoreOptions" type="button" class="w-10 h-10 rounded-full bg-[#2b2c2f] hover:bg-white/10 text-white flex items-center justify-center border border-gray-700/60 transition" title="Participants and settings">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                    </button>
+
+                    <!-- Leave Call Button -->
+                    <button id="btnMeetLeave" type="button" class="px-5 h-10 rounded-full bg-[#ea4335] hover:bg-[#d93025] text-white flex items-center justify-center transition shadow-lg shadow-red-500/20" title="Leave classroom">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -290,8 +367,10 @@
                        class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500 transition" />
                 <button type="submit"
                         aria-label="Send chat message"
-                        class="px-3 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition flex items-center">
-                    <i data-lucide="send" class="w-4 h-4"></i>
+                        class="px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition flex items-center justify-center shadow">
+                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <polygon points="3,2 22,12 3,22 6.5,14.5 15,12 6.5,9.5" />
+                    </svg>
                 </button>
             </form>
         </div>
@@ -351,12 +430,33 @@
     const btnRaiseHand        = document.getElementById('btnRaiseHand');
     const btnToggleMic        = document.getElementById('btnToggleMic');
     const btnToggleCam        = document.getElementById('btnToggleCam');
+    const btnMicOptions       = document.getElementById('btnMicOptions');
+    const btnCamOptions       = document.getElementById('btnCamOptions');
+    const btnToggleScreenShare= document.getElementById('btnToggleScreenShare');
+    const btnReactions        = document.getElementById('btnReactions');
+    const btnMoreOptions      = document.getElementById('btnMoreOptions');
+    const btnMeetLeave        = document.getElementById('btnMeetLeave');
+    const deviceMenuTray      = document.getElementById('deviceMenuTray');
+    const btnCloseDeviceMenu  = document.getElementById('btnCloseDeviceMenu');
+    const reactionsTray       = document.getElementById('reactionsTray');
+    const selectMicDevice     = document.getElementById('selectMicDevice');
+    const selectSpeakerDevice = document.getElementById('selectSpeakerDevice');
+    const selectCamDevice     = document.getElementById('selectCamDevice');
+    const presentationVideo   = document.getElementById('presentationVideo');
+    const btnExpandPresentation = document.getElementById('btnExpandPresentation');
+    const presentationModal   = document.getElementById('presentationModal');
+    const btnClosePresentationModal = document.getElementById('btnClosePresentationModal');
+    const modalPresentationVideo = document.getElementById('modalPresentationVideo');
     const micIcon             = document.getElementById('micIcon');
     const micText             = document.getElementById('micText');
     const camIcon             = document.getElementById('camIcon');
     const camText             = document.getElementById('camText');
     const viewerBanner        = document.getElementById('viewerBanner');
     const viewerLoginLink     = document.getElementById('viewerLoginLink');
+
+    let localScreenStream     = null;
+    let isScreenSharing       = false;
+    let currentScreenSharer   = null;
 
     // Authentication utils
     function getAuth() {
@@ -679,16 +779,12 @@
         const camOn = localMediaState.cam_enabled;
 
         if (micIcon) micIcon.textContent = micOn ? '🎙️' : '🔇';
-        if (micText) micText.textContent = micOn ? 'Mute' : 'Unmute';
-        btnToggleMic.classList.toggle('text-red-400', !micOn);
-        btnToggleMic.classList.toggle('bg-red-500/10', !micOn);
-        btnToggleMic.classList.toggle('border-red-500/30', !micOn);
+        btnToggleMic.classList.toggle('bg-[#ea4335]', !micOn);
+        btnToggleMic.classList.toggle('text-white', true);
 
-        if (camIcon) camIcon.textContent = camOn ? '📷' : '🚫';
-        if (camText) camText.textContent = camOn ? 'Stop Video' : 'Start Video';
-        btnToggleCam.classList.toggle('text-red-400', !camOn);
-        btnToggleCam.classList.toggle('bg-red-500/10', !camOn);
-        btnToggleCam.classList.toggle('border-red-500/30', !camOn);
+        if (camIcon) camIcon.textContent = camOn ? '📹' : '🚫';
+        btnToggleCam.classList.toggle('bg-[#ea4335]', !camOn);
+        btnToggleCam.classList.toggle('text-white', true);
     }
 
     function getOrCreatePeerConnection(peerId) {
@@ -709,6 +805,16 @@
                     pc.addTrack(track, localStream);
                 } catch (err) {
                     console.warn('[WebRTC] addTrack error:', err);
+                }
+            });
+        }
+
+        if (localScreenStream) {
+            localScreenStream.getTracks().forEach(track => {
+                try {
+                    pc.addTrack(track, localScreenStream);
+                } catch (err) {
+                    console.warn('[WebRTC] addTrack screen error:', err);
                 }
             });
         }
@@ -756,6 +862,11 @@
                     audioEl.srcObject = stream;
                     audioEl.play().catch(() => {});
                 }
+            }
+
+            // If this peer is presenting their screen, show in blackboard presentation canvas
+            if (currentScreenSharer && currentScreenSharer.participant_id === peerId) {
+                showPresentationStream(stream, currentScreenSharer.display_name);
             }
 
             updateAllSeatsMediaUI();
@@ -972,10 +1083,364 @@
             } catch (_) {}
             localStream = null;
         }
+        if (localScreenStream) {
+            try {
+                localScreenStream.getTracks().forEach(t => t.stop());
+            } catch (_) {}
+            localScreenStream = null;
+        }
+        isScreenSharing = false;
+        currentScreenSharer = null;
+        hidePresentationStream();
     }
 
+    // Devices & Screen Share & Reactions Logic
+    async function populateDeviceLists() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            if (selectMicDevice) {
+                selectMicDevice.innerHTML = '';
+                const mics = devices.filter(d => d.kind === 'audioinput');
+                if (mics.length === 0) {
+                    selectMicDevice.innerHTML = '<option value="">Default Microphone</option>';
+                } else {
+                    mics.forEach((d, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = d.deviceId;
+                        opt.textContent = d.label || `Microphone ${idx + 1}`;
+                        selectMicDevice.appendChild(opt);
+                    });
+                }
+            }
+
+            if (selectSpeakerDevice) {
+                selectSpeakerDevice.innerHTML = '';
+                const speakers = devices.filter(d => d.kind === 'audiooutput');
+                if (speakers.length === 0) {
+                    selectSpeakerDevice.innerHTML = '<option value="">Default Speaker</option>';
+                } else {
+                    speakers.forEach((d, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = d.deviceId;
+                        opt.textContent = d.label || `Speaker ${idx + 1}`;
+                        selectSpeakerDevice.appendChild(opt);
+                    });
+                }
+            }
+
+            if (selectCamDevice) {
+                selectCamDevice.innerHTML = '';
+                const cams = devices.filter(d => d.kind === 'videoinput');
+                if (cams.length === 0) {
+                    selectCamDevice.innerHTML = '<option value="">Default Camera</option>';
+                } else {
+                    cams.forEach((d, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = d.deviceId;
+                        opt.textContent = d.label || `Camera ${idx + 1}`;
+                        selectCamDevice.appendChild(opt);
+                    });
+                }
+            }
+        } catch (err) {
+            console.warn('[Devices] enumerateDevices error:', err);
+        }
+    }
+
+    async function switchInputDevice(kind, deviceId) {
+        if (!deviceId || !localStream) return;
+        try {
+            const constraints = (kind === 'audio')
+                ? { audio: { deviceId: { exact: deviceId } } }
+                : { video: { deviceId: { exact: deviceId }, width: { ideal: 480 }, height: { ideal: 360 } } };
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const newTrack = (kind === 'audio') ? newStream.getAudioTracks()[0] : newStream.getVideoTracks()[0];
+            if (!newTrack) return;
+
+            const oldTrack = (kind === 'audio') ? localStream.getAudioTracks()[0] : localStream.getVideoTracks()[0];
+            if (oldTrack) {
+                localStream.removeTrack(oldTrack);
+                try { oldTrack.stop(); } catch (_) {}
+            }
+            localStream.addTrack(newTrack);
+
+            Object.values(peerConnections).forEach(pc => {
+                const senders = pc.getSenders ? pc.getSenders() : [];
+                const sender = senders.find(s => s.track && s.track.kind === kind);
+                if (sender) {
+                    sender.replaceTrack(newTrack).catch(e => console.warn('[WebRTC] replaceTrack err:', e));
+                }
+            });
+            showToast(`Switched ${kind === 'audio' ? 'microphone' : 'camera'} device`, 'success');
+            updateAllSeatsMediaUI();
+        } catch (err) {
+            console.warn(`[Devices] switchInputDevice (${kind}) error:`, err);
+            showToast(`Could not switch ${kind} device`, 'warning');
+        }
+    }
+
+    async function switchSpeakerDevice(deviceId) {
+        if (!deviceId) return;
+        Object.values(remoteAudioElements).forEach(audioEl => {
+            if (typeof audioEl.setSinkId === 'function') {
+                audioEl.setSinkId(deviceId).catch(err => console.warn('[Audio] setSinkId err:', err));
+            }
+        });
+        showToast('Speaker device updated', 'info');
+    }
+
+    async function toggleScreenShare() {
+        if (!canInteract) { loginForInteraction(); return; }
+        if (isScreenSharing) {
+            stopScreenShare();
+            return;
+        }
+        if (currentScreenSharer && currentScreenSharer.participant_id !== myParticipantId) {
+            showToast(`${currentScreenSharer.display_name || 'Another participant'} is already sharing screen.`, 'warning');
+            return;
+        }
+        try {
+            localScreenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { cursor: 'always' },
+                audio: false
+            });
+            isScreenSharing = true;
+            if (btnToggleScreenShare) {
+                btnToggleScreenShare.classList.add('bg-blue-600', 'text-white');
+                btnToggleScreenShare.classList.remove('bg-[#2b2c2f]');
+            }
+
+            const screenTrack = localScreenStream.getVideoTracks()[0];
+            if (screenTrack) {
+                screenTrack.onended = () => {
+                    stopScreenShare();
+                };
+                Object.values(peerConnections).forEach(pc => {
+                    try {
+                        pc.addTrack(screenTrack, localScreenStream);
+                    } catch (err) {
+                        console.warn('[WebRTC] addTrack for screen err:', err);
+                    }
+                });
+                syncMeshConnections();
+            }
+
+            wsSend({ type: 'start_screen_share' });
+            showPresentationStream(localScreenStream, myDisplayName);
+            showToast('Screen sharing started', 'success');
+        } catch (err) {
+            console.warn('[ScreenShare] getDisplayMedia error:', err);
+            isScreenSharing = false;
+            if (btnToggleScreenShare) {
+                btnToggleScreenShare.classList.remove('bg-blue-600');
+                btnToggleScreenShare.classList.add('bg-[#2b2c2f]');
+            }
+        }
+    }
+
+    function stopScreenShare() {
+        if (localScreenStream) {
+            const screenTrack = localScreenStream.getVideoTracks()[0];
+            if (screenTrack) {
+                Object.values(peerConnections).forEach(pc => {
+                    const senders = pc.getSenders ? pc.getSenders() : [];
+                    const sender = senders.find(s => s.track === screenTrack);
+                    if (sender) {
+                        try { pc.removeTrack(sender); } catch (_) {}
+                    }
+                });
+            }
+            try {
+                localScreenStream.getTracks().forEach(t => t.stop());
+            } catch (_) {}
+            localScreenStream = null;
+        }
+        if (isScreenSharing) {
+            isScreenSharing = false;
+            if (btnToggleScreenShare) {
+                btnToggleScreenShare.classList.remove('bg-blue-600');
+                btnToggleScreenShare.classList.add('bg-[#2b2c2f]');
+            }
+            wsSend({ type: 'stop_screen_share' });
+            showToast('Screen sharing stopped', 'info');
+        }
+        if (currentScreenSharer && currentScreenSharer.participant_id === myParticipantId) {
+            hidePresentationStream();
+            currentScreenSharer = null;
+        }
+    }
+
+    function showPresentationStream(stream, presenterName) {
+        const blackboardDefault = document.getElementById('blackboardDefault');
+        const blackboardPresentation = document.getElementById('blackboardPresentation');
+        const presentationPresenterLabel = document.getElementById('presentationPresenterLabel');
+        const modalPresenterName = document.getElementById('modalPresenterName');
+
+        if (blackboardDefault) blackboardDefault.classList.add('hidden');
+        if (blackboardPresentation) blackboardPresentation.classList.remove('hidden');
+        if (presentationPresenterLabel) presentationPresenterLabel.textContent = `Presenting: ${presenterName || 'Live'}`;
+        if (modalPresenterName) modalPresenterName.textContent = `Screen Presentation: ${presenterName || 'Live'}`;
+
+        if (presentationVideo) {
+            if (stream) presentationVideo.srcObject = stream;
+            presentationVideo.muted = true;
+            presentationVideo.playsInline = true;
+            presentationVideo.play().catch(() => {});
+        }
+        if (modalPresentationVideo) {
+            if (stream) modalPresentationVideo.srcObject = stream;
+            modalPresentationVideo.muted = true;
+            modalPresentationVideo.playsInline = true;
+            modalPresentationVideo.play().catch(() => {});
+        }
+    }
+
+    function hidePresentationStream() {
+        const blackboardDefault = document.getElementById('blackboardDefault');
+        const blackboardPresentation = document.getElementById('blackboardPresentation');
+
+        if (blackboardDefault) blackboardDefault.classList.remove('hidden');
+        if (blackboardPresentation) blackboardPresentation.classList.add('hidden');
+        if (presentationVideo) {
+            presentationVideo.srcObject = null;
+        }
+        if (modalPresentationVideo) {
+            modalPresentationVideo.srcObject = null;
+        }
+        if (presentationModal) presentationModal.classList.add('hidden');
+    }
+
+    function sendClassroomReaction(emoji) {
+        if (!canInteract) { loginForInteraction(); return; }
+        wsSend({ type: 'reaction', emoji: emoji });
+        presenceSend({ type: 'presence', emoji: emoji });
+        spawnFloatingEmoji(emoji);
+        if (reactionsTray) reactionsTray.classList.add('hidden');
+    }
+
+    function spawnFloatingEmoji(emoji) {
+        const layer = document.getElementById('floatingReactionsLayer') || classroomCanvas;
+        if (!layer || !emoji) return;
+        const el = document.createElement('div');
+        el.className = 'float-reaction text-2xl sm:text-3xl select-none';
+        el.textContent = emoji;
+        const x = 30 + Math.random() * 40;
+        el.style.left = `${x}%`;
+        el.style.bottom = '15px';
+        layer.appendChild(el);
+        setTimeout(() => { el.remove(); }, 2300);
+    }
+
+    // Wiring button listeners
     if (btnToggleMic) btnToggleMic.addEventListener('click', toggleMicrophone);
     if (btnToggleCam) btnToggleCam.addEventListener('click', toggleCamera);
+    if (btnToggleScreenShare) btnToggleScreenShare.addEventListener('click', toggleScreenShare);
+
+    if (btnMicOptions) {
+        btnMicOptions.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (reactionsTray) reactionsTray.classList.add('hidden');
+            if (deviceMenuTray) {
+                deviceMenuTray.classList.toggle('hidden');
+                if (!deviceMenuTray.classList.contains('hidden')) populateDeviceLists();
+            }
+        });
+    }
+
+    if (btnCamOptions) {
+        btnCamOptions.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (reactionsTray) reactionsTray.classList.add('hidden');
+            if (deviceMenuTray) {
+                deviceMenuTray.classList.toggle('hidden');
+                if (!deviceMenuTray.classList.contains('hidden')) populateDeviceLists();
+            }
+        });
+    }
+
+    if (btnCloseDeviceMenu) {
+        btnCloseDeviceMenu.addEventListener('click', () => {
+            if (deviceMenuTray) deviceMenuTray.classList.add('hidden');
+        });
+    }
+
+    if (selectMicDevice) {
+        selectMicDevice.addEventListener('change', (e) => {
+            switchInputDevice('audio', e.target.value);
+        });
+    }
+
+    if (selectSpeakerDevice) {
+        selectSpeakerDevice.addEventListener('change', (e) => {
+            switchSpeakerDevice(e.target.value);
+        });
+    }
+
+    if (selectCamDevice) {
+        selectCamDevice.addEventListener('change', (e) => {
+            switchInputDevice('video', e.target.value);
+        });
+    }
+
+    if (btnReactions) {
+        btnReactions.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!canInteract) { loginForInteraction(); return; }
+            if (deviceMenuTray) deviceMenuTray.classList.add('hidden');
+            if (reactionsTray) reactionsTray.classList.toggle('hidden');
+        });
+    }
+
+    document.querySelectorAll('.btn-emoji-reaction').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const emoji = btn.dataset.emoji || btn.textContent.trim();
+            sendClassroomReaction(emoji);
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        if (deviceMenuTray && !deviceMenuTray.contains(e.target) && e.target !== btnMicOptions && e.target !== btnCamOptions) {
+            deviceMenuTray.classList.add('hidden');
+        }
+        if (reactionsTray && !reactionsTray.contains(e.target) && e.target !== btnReactions) {
+            reactionsTray.classList.add('hidden');
+        }
+    });
+
+    if (btnMoreOptions) {
+        btnMoreOptions.addEventListener('click', () => {
+            if (participantsSidebar) participantsSidebar.classList.remove('translate-x-full');
+        });
+    }
+
+    if (btnMeetLeave) {
+        btnMeetLeave.addEventListener('click', () => {
+            if (btnLeave) btnLeave.click();
+        });
+    }
+
+    if (btnExpandPresentation) {
+        btnExpandPresentation.addEventListener('click', () => {
+            if (presentationModal) {
+                presentationModal.classList.remove('hidden');
+                const stream = (currentScreenSharer && currentScreenSharer.participant_id === myParticipantId)
+                    ? localScreenStream
+                    : (currentScreenSharer ? remoteStreams[currentScreenSharer.participant_id] : null);
+                if (stream && modalPresentationVideo) {
+                    modalPresentationVideo.srcObject = stream;
+                    modalPresentationVideo.play().catch(() => {});
+                }
+            }
+        });
+    }
+
+    if (btnClosePresentationModal) {
+        btnClosePresentationModal.addEventListener('click', () => {
+            if (presentationModal) presentationModal.classList.add('hidden');
+        });
+    }
 
     // Toast
     function showToast(msg, type = 'info') {
@@ -1037,6 +1502,10 @@
         applyDisabledStyle(btnRaiseHand, !canInteract);
         applyDisabledStyle(btnToggleMic, !canInteract);
         applyDisabledStyle(btnToggleCam, !canInteract);
+        applyDisabledStyle(btnMicOptions, !canInteract);
+        applyDisabledStyle(btnCamOptions, !canInteract);
+        applyDisabledStyle(btnToggleScreenShare, !canInteract);
+        applyDisabledStyle(btnReactions, !canInteract);
     }
 
     function updateLobbyActionCopy() {
@@ -1057,6 +1526,7 @@
         lobbyRoomId.value = roomId;
         lobbyDisplayName.value = myDisplayName;
         myParticipantId = resolveParticipantId();
+        populateDeviceLists();
 
         topRoomId.textContent = roomId;
         myInitial.textContent = myDisplayName.charAt(0).toUpperCase();
@@ -1464,6 +1934,61 @@
                 currentSeat = null;
                 showToast(data.message || 'Seat is taken!', 'warning');
                 break;
+
+            case 'screen_share_started': {
+                currentScreenSharer = {
+                    participant_id: data.participant_id,
+                    display_name: data.display_name
+                };
+                if (data.participant_id === myParticipantId) {
+                    if (localScreenStream) {
+                        showPresentationStream(localScreenStream, myDisplayName);
+                    }
+                } else {
+                    showToast(`${data.display_name} started sharing screen`, 'info');
+                    const remoteStream = remoteStreams[data.participant_id];
+                    showPresentationStream(remoteStream, data.display_name);
+                }
+                break;
+            }
+
+            case 'screen_share_stopped': {
+                showToast(`${currentScreenSharer?.display_name || 'Participant'} stopped sharing screen`, 'info');
+                currentScreenSharer = null;
+                hidePresentationStream();
+                if (isScreenSharing) {
+                    isScreenSharing = false;
+                    if (btnToggleScreenShare) {
+                        btnToggleScreenShare.classList.remove('bg-blue-600');
+                        btnToggleScreenShare.classList.add('bg-[#2b2c2f]');
+                    }
+                }
+                break;
+            }
+
+            case 'screen_share_rejected': {
+                showToast(data.message || 'Screen share rejected', 'warning');
+                if (isScreenSharing) {
+                    if (localScreenStream) {
+                        try { localScreenStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+                        localScreenStream = null;
+                    }
+                    isScreenSharing = false;
+                    if (btnToggleScreenShare) {
+                        btnToggleScreenShare.classList.remove('bg-blue-600');
+                        btnToggleScreenShare.classList.add('bg-[#2b2c2f]');
+                    }
+                    hidePresentationStream();
+                }
+                break;
+            }
+
+            case 'reaction': {
+                if (data.emoji) {
+                    spawnFloatingEmoji(data.emoji);
+                }
+                break;
+            }
         }
     }
 
@@ -1519,6 +2044,19 @@
             myCharacter.style.display = 'none';
         } else {
             myCharacter.style.display = '';
+        }
+
+        if (data.screen_sharer) {
+            currentScreenSharer = data.screen_sharer;
+            if (data.screen_sharer.participant_id === myParticipantId && localScreenStream) {
+                showPresentationStream(localScreenStream, myDisplayName);
+            } else {
+                const stream = remoteStreams[data.screen_sharer.participant_id];
+                showPresentationStream(stream, data.screen_sharer.display_name);
+            }
+        } else {
+            currentScreenSharer = null;
+            hidePresentationStream();
         }
 
         const serverCount = Number(data.count);
@@ -1848,6 +2386,22 @@
     }
 })();
 </script>
+
+<!-- THEATER / EXPANDED PRESENTATION MODAL -->
+<div id="presentationModal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-[100] hidden flex flex-col p-4">
+    <div class="flex items-center justify-between pb-3 border-b border-gray-800 text-white">
+        <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="modalPresenterName" class="font-semibold text-sm">Screen Presentation</span>
+        </div>
+        <button id="btnClosePresentationModal" type="button" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium transition border border-gray-700">
+            ✕ Close
+        </button>
+    </div>
+    <div class="flex-1 flex items-center justify-center p-2 min-h-0">
+        <video id="modalPresentationVideo" autoplay playsinline muted class="max-w-full max-h-full rounded-lg shadow-2xl object-contain"></video>
+    </div>
+</div>
 
 </body>
 </html>

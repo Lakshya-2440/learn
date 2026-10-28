@@ -6552,6 +6552,7 @@ class ClassroomDO(DurableObject):
         super().__init__(ctx, env)
         # sessions: session_id -> {ws, participant_id, display_name, position, direction, is_moving, seat_id}
         self.sessions = {}
+        self.screen_sharer = None
 
         # Restore hibernated WebSocket connections
         for ws in self.ctx.getWebSockets():
@@ -6929,6 +6930,48 @@ class ClassroomDO(DurableObject):
                 "cam_enabled":    video,
             }))
 
+        elif msg_type == "start_screen_share":
+            current_sharer = getattr(self, "screen_sharer", None)
+            if current_sharer and current_sharer.get("participant_id") != info["participant_id"]:
+                try:
+                    ws.send(json.dumps({
+                        "type": "screen_share_rejected",
+                        "message": f"{current_sharer.get('display_name', 'Another participant')} is already sharing their screen."
+                    }))
+                except Exception:
+                    pass
+                return
+
+            self.screen_sharer = {
+                "participant_id": info["participant_id"],
+                "display_name":   info["display_name"],
+            }
+            self._broadcast(json.dumps({
+                "type":           "screen_share_started",
+                "participant_id": info["participant_id"],
+                "display_name":   info["display_name"],
+            }))
+            self._broadcast_room_state()
+
+        elif msg_type == "stop_screen_share":
+            current_sharer = getattr(self, "screen_sharer", None)
+            if current_sharer and current_sharer.get("participant_id") == info["participant_id"]:
+                self.screen_sharer = None
+                self._broadcast(json.dumps({
+                    "type":           "screen_share_stopped",
+                    "participant_id": info["participant_id"],
+                }))
+                self._broadcast_room_state()
+
+        elif msg_type == "reaction":
+            emoji = str(data.get("emoji", ""))[:16]
+            self._broadcast(json.dumps({
+                "type":           "reaction",
+                "participant_id": info["participant_id"],
+                "display_name":   info["display_name"],
+                "emoji":          emoji,
+            }))
+
     async def on_webSocketClose(self, ws, code, reason, wasClean):
         session = self._session_for_ws(ws)
         if not session:
@@ -6941,6 +6984,16 @@ class ClassroomDO(DurableObject):
         self.sessions.pop(sid, None)
         if not info.get("can_interact", True):
             return
+
+        current_sharer = getattr(self, "screen_sharer", None)
+        if current_sharer and current_sharer.get("participant_id") == pid:
+            other_tabs = [s for s in self.sessions.values() if s.get("participant_id") == pid]
+            if not other_tabs:
+                self.screen_sharer = None
+                self._broadcast(json.dumps({
+                    "type":           "screen_share_stopped",
+                    "participant_id": pid,
+                }))
 
         still_connected = any(
             s.get("can_interact", True) and s["participant_id"] == pid for s in self.sessions.values()
@@ -7065,9 +7118,10 @@ class ClassroomDO(DurableObject):
                 }
 
         self._broadcast(json.dumps({
-            "type":         "room_state",
-            "participants": list(seen.values()),
-            "count":        len(seen),
+            "type":          "room_state",
+            "participants":  list(seen.values()),
+            "count":         len(seen),
+            "screen_sharer": getattr(self, "screen_sharer", None),
         }))
 
     def _persist_attachment(self, session_id, info):
