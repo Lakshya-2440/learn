@@ -648,21 +648,23 @@
                     <div data-desk-box="${seatId}" class="w-full aspect-[16/10] rounded-lg shadow-lg bg-gradient-to-b from-[#8C4B1E] via-[#7B3F18] to-[#5C2D0C] border-2 border-[#452006] flex items-center justify-center relative group-hover:border-amber-400 group-hover:shadow-amber-900/30 overflow-hidden">
                         <span data-seat-number="${seatId}" class="text-xs md:text-sm font-bold text-amber-200/50 select-none tracking-wider">${seatNum}</span>
                         <div data-seat-media="${seatId}" class="absolute inset-0 hidden flex items-center justify-center bg-gray-950/85">
-                            <video data-seat-video="${seatId}" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+                            <video data-seat-video="${seatId}" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
                             <div data-seat-avatar="${seatId}" class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white font-bold flex items-center justify-center text-xs md:text-sm shadow-md border border-white/20"></div>
                             <div class="absolute bottom-1 right-1 flex items-center gap-1 bg-gray-900/85 backdrop-blur px-1.5 py-0.5 rounded text-[9px] text-white pointer-events-none">
-                                <span data-seat-mic="${seatId}">🎙️</span>
-                                <span data-seat-cam="${seatId}">📷</span>
+                                <span data-seat-mic="${seatId}"></span>
+                                <span data-seat-cam="${seatId}"></span>
                             </div>
                         </div>
                         <div data-seat-label="${seatId}" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] md:text-xs text-white bg-gray-900/95 border border-white/20 px-2.5 py-0.5 rounded-md font-medium whitespace-nowrap shadow-lg hidden z-10 pointer-events-none"></div>
                     </div>
-                    <div data-seat-chair="${seatId}" class="w-[62%] h-3.5 md:h-4 mt-1 rounded bg-[#202744] border border-[#141A33] shadow-inner group-hover:bg-[#2c365e] transition-colors"></div>
+                    <div data-seat-chair="${seatId}" class="w-[82%] min-h-[18px] md:min-h-[22px] mt-1 px-1.5 py-0.5 rounded bg-[#182033] border border-[#232d4b] shadow-inner flex items-center justify-center text-[10px] md:text-xs font-semibold text-slate-400/50 truncate select-none transition-all" title="Empty Seat"></div>
                 `;
                 desk.addEventListener('click', () => handleDeskClick(seatId));
                 desksContainer.appendChild(desk);
             }
         }
+        renderSeatLabels();
+        updateAllSeatsMediaUI();
     }
 
     function handleDeskClick(seatId) {
@@ -687,16 +689,39 @@
         delete seatOccupants[seatId];
         const label = document.querySelector(`[data-seat-label="${seatId}"]`);
         if (label) { label.textContent = ''; label.classList.add('hidden'); }
+        const chair = document.querySelector(`[data-seat-chair="${seatId}"]`);
+        if (chair) {
+            chair.textContent = '';
+            chair.className = 'w-[82%] min-h-[18px] md:min-h-[22px] mt-1 px-1.5 py-0.5 rounded bg-[#182033] border border-[#232d4b] shadow-inner flex items-center justify-center text-[10px] md:text-xs font-semibold text-slate-400/50 truncate select-none transition-all';
+            chair.title = 'Empty Seat';
+        }
         updateSeatMediaUI(seatId);
     }
 
     function renderSeatLabel(seatId) {
         const label = document.querySelector(`[data-seat-label="${seatId}"]`);
+        const chair = document.querySelector(`[data-seat-chair="${seatId}"]`);
         const occupant = seatOccupants[seatId];
-        if (!label || !occupant) return;
+        if (!occupant) {
+            if (label) { label.textContent = ''; label.classList.add('hidden'); }
+            if (chair) {
+                chair.textContent = '';
+                chair.className = 'w-[82%] min-h-[18px] md:min-h-[22px] mt-1 px-1.5 py-0.5 rounded bg-[#182033] border border-[#232d4b] shadow-inner flex items-center justify-center text-[10px] md:text-xs font-semibold text-slate-400/50 truncate select-none transition-all';
+                chair.title = 'Empty Seat';
+            }
+            return;
+        }
         const badge = occupant.pid ? presenceBadge(occupant.pid) : '';
-        label.textContent = badge ? `${occupant.name} ${badge}` : occupant.name;
-        label.classList.remove('hidden');
+        const displayName = occupant.name || 'Student';
+        if (label) {
+            label.textContent = badge ? `${displayName} ${badge}` : displayName;
+            label.classList.remove('hidden');
+        }
+        if (chair) {
+            chair.textContent = displayName;
+            chair.className = 'w-[82%] min-h-[18px] md:min-h-[22px] mt-1 px-1.5 py-0.5 rounded bg-[#1e3a8a] border border-blue-400 shadow-md flex items-center justify-center text-[10px] md:text-xs font-bold text-cyan-100 truncate select-none transition-all';
+            chair.title = `${displayName}'s Seat`;
+        }
     }
 
     function renderSeatLabels() {
@@ -707,6 +732,7 @@
     // WebRTC COORDINATOR & AUDIO/VIDEO CONTROLS
     // ==========================================
     let localStream = null;
+    let localMediaPromise = null;
     const localMediaState = { mic_enabled: true, cam_enabled: true };
     const peerConnections = {};
     const pendingCandidates = {};
@@ -721,44 +747,133 @@
         ]
     };
 
+    function ensureLocalMedia() {
+        if (!canInteract) return Promise.resolve(null);
+        if (localStream) return Promise.resolve(localStream);
+        if (!localMediaPromise) {
+            localMediaPromise = initLocalMedia();
+        }
+        return localMediaPromise;
+    }
+
+    async function renegotiatePeer(peerId) {
+        const pc = peerConnections[peerId];
+        if (!pc || pc.signalingState !== 'stable') return;
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            wsSend({
+                type: 'signal_offer',
+                target_peer_id: peerId,
+                target: peerId,
+                offer: { type: 'offer', sdp: offer.sdp },
+                sdp: offer.sdp
+            });
+        } catch (err) {
+            console.warn('[WebRTC] renegotiatePeer failed for', peerId, err);
+        }
+    }
+
     async function initLocalMedia() {
-        if (!canInteract || localStream) return;
+        if (!canInteract) return null;
+        if (localStream) return localStream;
         try {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                    video: { width: { ideal: 480 }, height: { ideal: 360 } }
-                });
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: true,
+                        video: { width: { ideal: 480 }, height: { ideal: 360 } }
+                    });
+                } catch (firstErr) {
+                    console.warn('[WebRTC] Combined getUserMedia failed, attempting separate audio/video streams:', firstErr);
+                    let audioTrack = null;
+                    let videoTrack = null;
+                    try {
+                        const aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        audioTrack = aStream.getAudioTracks()[0];
+                    } catch (_) {}
+                    try {
+                        const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        videoTrack = vStream.getVideoTracks()[0];
+                    } catch (_) {}
+
+                    if (audioTrack || videoTrack) {
+                        localStream = new MediaStream();
+                        if (audioTrack) localStream.addTrack(audioTrack);
+                        if (videoTrack) localStream.addTrack(videoTrack);
+                    } else {
+                        throw firstErr;
+                    }
+                }
             }
         } catch (err) {
-            console.warn('[WebRTC] getUserMedia error or permission denied:', err);
+            console.warn('[WebRTC] Hardware camera/mic error, falling back to animated canvas stream:', err);
             try {
                 const canvas = document.createElement('canvas');
                 canvas.width = 320;
                 canvas.height = 240;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#1e293b';
-                ctx.fillRect(0, 0, 320, 240);
-                localStream = canvas.captureStream(10);
-                localMediaState.cam_enabled = false;
-                localMediaState.mic_enabled = false;
+                let pulse = 0;
+                function drawFallbackFrame() {
+                    pulse += 0.04;
+                    const [c1, c2] = colorForId(myParticipantId || 'me');
+                    const grad = ctx.createLinearGradient(0, 0, 320, 240);
+                    grad.addColorStop(0, c1);
+                    grad.addColorStop(1, c2);
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, 320, 240);
+
+                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(160, 105, 42 + Math.sin(pulse) * 3, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.beginPath();
+                    ctx.arc(160, 105, 38, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 32px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText((myDisplayName || 'U').charAt(0).toUpperCase(), 160, 105);
+
+                    ctx.font = 'bold 15px sans-serif';
+                    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                    ctx.fillText(myDisplayName || 'Participant', 160, 165);
+                    requestAnimationFrame(drawFallbackFrame);
+                }
+                drawFallbackFrame();
+                localStream = canvas.captureStream(20);
+                localMediaState.cam_enabled = true;
             } catch (_) {}
         }
-        // Attach newly acquired local tracks to any already-created peer connections
+
+        // Attach newly acquired local tracks to any already-created peer connections & renegotiate
         if (localStream) {
-            Object.values(peerConnections).forEach(pc => {
+            for (const [peerId, pc] of Object.entries(peerConnections)) {
+                let trackAdded = false;
+                const senders = pc.getSenders ? pc.getSenders() : [];
                 localStream.getTracks().forEach(track => {
-                    const senders = pc.getSenders ? pc.getSenders() : [];
                     if (!senders.some(s => s.track && s.track.kind === track.kind)) {
-                        try { pc.addTrack(track, localStream); } catch (_) {}
+                        try {
+                            pc.addTrack(track, localStream);
+                            trackAdded = true;
+                        } catch (_) {}
                     }
                 });
-            });
+                if (trackAdded && pc.signalingState === 'stable') {
+                    renegotiatePeer(peerId);
+                }
+            }
         }
         updateMediaControlUI();
         broadcastMediaState();
         updateAllSeatsMediaUI();
         syncMeshConnections();
+        return localStream;
     }
 
     function toggleMicrophone() {
@@ -905,6 +1020,12 @@
                 stream.addTrack(event.track);
             }
 
+            if (event.track) {
+                event.track.onunmute = () => updateAllSeatsMediaUI();
+                event.track.onmute   = () => updateAllSeatsMediaUI();
+                event.track.onended  = () => updateAllSeatsMediaUI();
+            }
+
             // Route audio to audio element for playback
             if (event.track.kind === 'audio' || stream.getAudioTracks().length > 0) {
                 let audioEl = remoteAudioElements[peerId];
@@ -958,6 +1079,9 @@
 
     async function syncMeshConnections() {
         if (!canInteract) return;
+        if (!localStream && localMediaPromise) {
+            try { await localMediaPromise; } catch (_) {}
+        }
         const peerIdsSet = new Set(Object.keys(participants));
         Object.values(seatOccupants).forEach(occ => {
             if (occ && occ.pid) peerIdsSet.add(occ.pid);
@@ -989,8 +1113,31 @@
     async function handleIncomingOffer(fromPeerId, sdp) {
         if (!canInteract) return;
         try {
+            if (!localStream && localMediaPromise) {
+                try { await localMediaPromise; } catch (_) {}
+            }
             const pc = getOrCreatePeerConnection(fromPeerId);
             if (!pc) return;
+
+            // Ensure any local tracks are attached before answering
+            if (localStream) {
+                const senders = pc.getSenders ? pc.getSenders() : [];
+                localStream.getTracks().forEach(track => {
+                    if (!senders.some(s => s.track && s.track.kind === track.kind)) {
+                        try { pc.addTrack(track, localStream); } catch (_) {}
+                    }
+                });
+            }
+
+            // Polite peer offer collision handling
+            if (pc.signalingState === 'have-local-offer') {
+                if (myParticipantId > fromPeerId) {
+                    await pc.setLocalDescription({ type: 'rollback' });
+                } else {
+                    return;
+                }
+            }
+
             const sdpString = (typeof sdp === 'object' && sdp.sdp) ? sdp.sdp : sdp;
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: sdpString }));
             if (pendingCandidates[fromPeerId]) {
@@ -1113,9 +1260,13 @@
                 if (videoEl.srcObject !== stream) {
                     videoEl.srcObject = stream;
                 }
+                videoEl.defaultMuted = true;
                 videoEl.muted = true; // Desk video tile muted to guarantee zero autoplay blocks
                 videoEl.playsInline = true;
-                videoEl.play().catch(() => {});
+                videoEl.setAttribute('muted', '');
+                videoEl.setAttribute('playsinline', '');
+                const p = videoEl.play();
+                if (p && p.catch) p.catch(() => {});
             }
         } else {
             if (videoEl) {
@@ -1602,6 +1753,9 @@
         classroomScreen.classList.add('flex');
 
         renderDesks();
+        if (canInteract) {
+            ensureLocalMedia();
+        }
         connectWS();
         if (canInteract) startGameLoop();
         updatePresenceControls();
@@ -1651,7 +1805,7 @@
             setConnStatus(true);
             connectPresenceWS();
             if (canInteract) {
-                initLocalMedia();
+                ensureLocalMedia();
             }
             showToast(canInteract ? 'Connected to classroom' : 'Viewing classroom', 'success');
         };
