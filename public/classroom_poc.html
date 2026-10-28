@@ -224,7 +224,7 @@
                     <span class="text-white/50 text-[10px] font-medium select-none">Teacher's Desk</span>
                 </div>
                 <!-- Student desks (3 rows x 5 cols) -->
-                <div id="desksContainer" class="absolute left-[10%] right-[10%]" style="top:36%; bottom:12%;"></div>
+                <div id="desksContainer" class="absolute left-[3%] right-[3%]" style="top:39%; bottom:3%;"></div>
                 <!-- Other participant avatars -->
                 <div id="avatarLayer" class="absolute inset-0 pointer-events-none" style="z-index:40;"></div>
                 <!-- Current user character -->
@@ -259,6 +259,16 @@
                     </button>
                     <button id="btnRaiseHand" type="button" class="px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition" title="Toggle raised hand">
                         ✋
+                    </button>
+                </div>
+                <div class="flex items-center gap-1.5 border-l border-gray-700/60 pl-2">
+                    <button id="btnToggleMic" type="button" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition flex items-center gap-1.5" title="Toggle microphone">
+                        <span id="micIcon">🎙️</span>
+                        <span id="micText" class="hidden md:inline">Mute</span>
+                    </button>
+                    <button id="btnToggleCam" type="button" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-200 transition flex items-center gap-1.5" title="Toggle camera">
+                        <span id="camIcon">📷</span>
+                        <span id="camText" class="hidden md:inline">Stop Video</span>
                     </button>
                 </div>
                 <div class="w-full sm:w-auto sm:ml-auto text-gray-500">Virtual Classroom</div>
@@ -339,6 +349,12 @@
     const toastContainer      = document.getElementById('toastContainer');
     const btnThumbsUp         = document.getElementById('btnThumbsUp');
     const btnRaiseHand        = document.getElementById('btnRaiseHand');
+    const btnToggleMic        = document.getElementById('btnToggleMic');
+    const btnToggleCam        = document.getElementById('btnToggleCam');
+    const micIcon             = document.getElementById('micIcon');
+    const micText             = document.getElementById('micText');
+    const camIcon             = document.getElementById('camIcon');
+    const camText             = document.getElementById('camText');
     const viewerBanner        = document.getElementById('viewerBanner');
     const viewerLoginLink     = document.getElementById('viewerLoginLink');
 
@@ -493,38 +509,63 @@
     const DESK_COLS = 5;
     function renderDesks() {
         desksContainer.innerHTML = '';
-        const gapRow = 100 / (DESK_ROWS + 1);
-        const gapCol = 100 / (DESK_COLS + 1);
         for (let r = 0; r < DESK_ROWS; r++) {
             for (let c = 0; c < DESK_COLS; c++) {
                 const seatNum = r * DESK_COLS + c + 1;
                 const seatId  = `seat-${seatNum}`;
-                const top  = gapRow * (r + 1) - 4;
-                const left = gapCol * (c + 1) - 4;
+                // Spread columns evenly across the container width (centers at 8.5%, 29.25%, 50%, 70.75%, 91.5%)
+                const left = 8.5 + c * (83 / (DESK_COLS - 1));
+                // Spread rows evenly across container height (tops at 4%, 37%, 70%)
+                const top  = 4 + r * (66 / (DESK_ROWS - 1));
                 const desk = document.createElement('div');
-                desk.className = 'absolute flex flex-col items-center';
-                desk.style.cssText = `top:${top}%; left:${left}%; width:8%; transform:translateX(-50%);`;
+                desk.className = 'absolute flex flex-col items-center group cursor-pointer transition-transform hover:scale-[1.03]';
+                desk.style.cssText = `top:${top}%; left:${left}%; width:15%; transform:translateX(-50%);`;
+                desk.setAttribute('data-seat-container', seatId);
+                desk.title = `Seat ${seatNum} - Click or walk near and press E to sit`;
                 desk.innerHTML = `
-                    <div class="w-full aspect-[4/3] rounded shadow-md bg-amber-800 border border-amber-900 flex items-center justify-center relative">
-                        <span class="text-[8px] text-white/40 select-none">${seatNum}</span>
-                        <div data-seat-label="${seatId}" class="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] text-white bg-gray-800/90 px-1.5 py-0.5 rounded whitespace-nowrap hidden"></div>
+                    <div data-desk-box="${seatId}" class="w-full aspect-[16/10] rounded-lg shadow-lg bg-gradient-to-b from-[#8C4B1E] via-[#7B3F18] to-[#5C2D0C] border-2 border-[#452006] flex items-center justify-center relative group-hover:border-amber-400 group-hover:shadow-amber-900/30 overflow-hidden">
+                        <span data-seat-number="${seatId}" class="text-xs md:text-sm font-bold text-amber-200/50 select-none tracking-wider">${seatNum}</span>
+                        <div data-seat-media="${seatId}" class="absolute inset-0 hidden flex items-center justify-center bg-gray-950/85">
+                            <video data-seat-video="${seatId}" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+                            <div data-seat-avatar="${seatId}" class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white font-bold flex items-center justify-center text-xs md:text-sm shadow-md border border-white/20"></div>
+                            <div class="absolute bottom-1 right-1 flex items-center gap-1 bg-gray-900/85 backdrop-blur px-1.5 py-0.5 rounded text-[9px] text-white pointer-events-none">
+                                <span data-seat-mic="${seatId}">🎙️</span>
+                                <span data-seat-cam="${seatId}">📷</span>
+                            </div>
+                        </div>
+                        <div data-seat-label="${seatId}" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] md:text-xs text-white bg-gray-900/95 border border-white/20 px-2.5 py-0.5 rounded-md font-medium whitespace-nowrap shadow-lg hidden z-10 pointer-events-none"></div>
                     </div>
-                    <div data-seat-chair="${seatId}" class="w-[60%] h-2 mt-0.5 rounded-sm bg-indigo-900 border border-indigo-950"></div>
+                    <div data-seat-chair="${seatId}" class="w-[62%] h-3.5 md:h-4 mt-1 rounded bg-[#202744] border border-[#141A33] shadow-inner group-hover:bg-[#2c365e] transition-colors"></div>
                 `;
+                desk.addEventListener('click', () => handleDeskClick(seatId));
                 desksContainer.appendChild(desk);
             }
         }
+    }
+
+    function handleDeskClick(seatId) {
+        if (!canInteract) { loginForInteraction(); return; }
+        if (isSeated && currentSeat === seatId) {
+            wsSend({ type: 'leave_seat', seat_id: currentSeat });
+            return;
+        }
+        if (isSeated && currentSeat !== seatId) {
+            wsSend({ type: 'leave_seat', seat_id: currentSeat });
+        }
+        wsSend({ type: 'update_seat', seat_id: seatId });
     }
 
     function updateSeatLabel(seatId, name, pid = null) {
         if (!seatId) return;
         seatOccupants[seatId] = { name, pid };
         renderSeatLabel(seatId);
+        updateSeatMediaUI(seatId);
     }
     function clearSeatLabel(seatId) {
         delete seatOccupants[seatId];
         const label = document.querySelector(`[data-seat-label="${seatId}"]`);
         if (label) { label.textContent = ''; label.classList.add('hidden'); }
+        updateSeatMediaUI(seatId);
     }
 
     function renderSeatLabel(seatId) {
@@ -539,6 +580,375 @@
     function renderSeatLabels() {
         Object.keys(seatOccupants).forEach((seatId) => renderSeatLabel(seatId));
     }
+
+    // ==========================================
+    // WebRTC COORDINATOR & AUDIO/VIDEO CONTROLS
+    // ==========================================
+    let localStream = null;
+    const localMediaState = { mic_enabled: true, cam_enabled: true };
+    const peerConnections = {};
+    const pendingCandidates = {};
+    const remoteStreams = {};
+    const remoteAudioElements = {};
+    const participantMediaState = {};
+
+    const RTC_CONFIG = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    };
+
+    async function initLocalMedia() {
+        if (!canInteract || localStream) return;
+        try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: { width: { ideal: 480 }, height: { ideal: 360 } }
+                });
+            }
+        } catch (err) {
+            console.warn('[WebRTC] getUserMedia error or permission denied:', err);
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(0, 0, 320, 240);
+                localStream = canvas.captureStream(10);
+                localMediaState.cam_enabled = false;
+                localMediaState.mic_enabled = false;
+            } catch (_) {}
+        }
+        updateMediaControlUI();
+        broadcastMediaState();
+        updateAllSeatsMediaUI();
+        syncMeshConnections();
+    }
+
+    function toggleMicrophone() {
+        if (!canInteract) { loginForInteraction(); return; }
+        localMediaState.mic_enabled = !localMediaState.mic_enabled;
+        if (localStream) {
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = localMediaState.mic_enabled;
+            });
+        }
+        updateMediaControlUI();
+        broadcastMediaState();
+        updateAllSeatsMediaUI();
+    }
+
+    function toggleCamera() {
+        if (!canInteract) { loginForInteraction(); return; }
+        localMediaState.cam_enabled = !localMediaState.cam_enabled;
+        if (localStream) {
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = localMediaState.cam_enabled;
+            });
+        }
+        updateMediaControlUI();
+        broadcastMediaState();
+        updateAllSeatsMediaUI();
+    }
+
+    function broadcastMediaState() {
+        wsSend({
+            type: 'media_state',
+            mic_enabled: localMediaState.mic_enabled,
+            cam_enabled: localMediaState.cam_enabled
+        });
+    }
+
+    function updateMediaControlUI() {
+        if (!btnToggleMic || !btnToggleCam) return;
+        const micOn = localMediaState.mic_enabled;
+        const camOn = localMediaState.cam_enabled;
+
+        if (micIcon) micIcon.textContent = micOn ? '🎙️' : '🔇';
+        if (micText) micText.textContent = micOn ? 'Mute' : 'Unmute';
+        btnToggleMic.classList.toggle('text-red-400', !micOn);
+        btnToggleMic.classList.toggle('bg-red-500/10', !micOn);
+        btnToggleMic.classList.toggle('border-red-500/30', !micOn);
+
+        if (camIcon) camIcon.textContent = camOn ? '📷' : '🚫';
+        if (camText) camText.textContent = camOn ? 'Stop Video' : 'Start Video';
+        btnToggleCam.classList.toggle('text-red-400', !camOn);
+        btnToggleCam.classList.toggle('bg-red-500/10', !camOn);
+        btnToggleCam.classList.toggle('border-red-500/30', !camOn);
+    }
+
+    function getOrCreatePeerConnection(peerId) {
+        if (peerConnections[peerId]) return peerConnections[peerId];
+        let pc;
+        try {
+            pc = new RTCPeerConnection(RTC_CONFIG);
+        } catch (err) {
+            console.warn('[WebRTC] RTCPeerConnection construction error:', err);
+            return null;
+        }
+        peerConnections[peerId] = pc;
+        pendingCandidates[peerId] = [];
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                try {
+                    pc.addTrack(track, localStream);
+                } catch (err) {
+                    console.warn('[WebRTC] addTrack error:', err);
+                }
+            });
+        }
+
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                wsSend({
+                    type: 'ice_candidate',
+                    target: peerId,
+                    candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+                });
+            }
+        };
+
+        pc.ontrack = (event) => {
+            let stream = remoteStreams[peerId];
+            if (!stream) {
+                stream = new MediaStream();
+                remoteStreams[peerId] = stream;
+            }
+            if (event.streams && event.streams[0]) {
+                event.streams[0].getTracks().forEach(track => {
+                    if (!stream.getTracks().some(t => t.id === track.id)) {
+                        stream.addTrack(track);
+                    }
+                });
+            }
+            if (event.track && !stream.getTracks().some(t => t.id === event.track.id)) {
+                stream.addTrack(event.track);
+            }
+
+            // Route audio to audio element for playback
+            let audioEl = remoteAudioElements[peerId];
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.autoplay = true;
+                audioEl.playsInline = true;
+                document.body.appendChild(audioEl);
+                remoteAudioElements[peerId] = audioEl;
+            }
+            if (audioEl.srcObject !== stream) {
+                audioEl.srcObject = stream;
+                audioEl.play().catch(() => {});
+            }
+
+            updateAllSeatsMediaUI();
+        };
+
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                closePeerConnection(peerId);
+            }
+        };
+
+        return pc;
+    }
+
+    function closePeerConnection(peerId) {
+        if (peerConnections[peerId]) {
+            try { peerConnections[peerId].close(); } catch (_) {}
+            delete peerConnections[peerId];
+        }
+        delete pendingCandidates[peerId];
+        delete remoteStreams[peerId];
+        delete participantMediaState[peerId];
+        if (remoteAudioElements[peerId]) {
+            try {
+                remoteAudioElements[peerId].pause();
+                remoteAudioElements[peerId].remove();
+            } catch (_) {}
+            delete remoteAudioElements[peerId];
+        }
+        updateAllSeatsMediaUI();
+    }
+
+    async function syncMeshConnections() {
+        if (!canInteract || !localStream) return;
+        const peerIds = Object.keys(participants).slice(0, 6);
+        for (const peerId of peerIds) {
+            if (peerId === myParticipantId) continue;
+            // Deterministic initiator avoids offer glare (lower participant ID creates offer)
+            if (myParticipantId < peerId && !peerConnections[peerId]) {
+                try {
+                    const pc = getOrCreatePeerConnection(peerId);
+                    if (!pc) continue;
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    wsSend({
+                        type: 'signal_offer',
+                        target: peerId,
+                        sdp: offer.sdp
+                    });
+                } catch (err) {
+                    console.warn('[WebRTC] createOffer failed for peer', peerId, err);
+                }
+            }
+        }
+    }
+
+    async function handleIncomingOffer(fromPeerId, sdp) {
+        if (!canInteract) return;
+        try {
+            const pc = getOrCreatePeerConnection(fromPeerId);
+            if (!pc) return;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
+            if (pendingCandidates[fromPeerId]) {
+                for (const cand of pendingCandidates[fromPeerId]) {
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(cand));
+                    } catch (e) {
+                        console.warn('[WebRTC] error adding queued candidate:', e);
+                    }
+                }
+                pendingCandidates[fromPeerId] = [];
+            }
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            wsSend({
+                type: 'signal_answer',
+                target: fromPeerId,
+                sdp: answer.sdp
+            });
+        } catch (err) {
+            console.warn('[WebRTC] handleIncomingOffer error:', err);
+        }
+    }
+
+    async function handleIncomingAnswer(fromPeerId, sdp) {
+        try {
+            const pc = peerConnections[fromPeerId];
+            if (!pc) return;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
+            if (pendingCandidates[fromPeerId]) {
+                for (const cand of pendingCandidates[fromPeerId]) {
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(cand));
+                    } catch (e) {
+                        console.warn('[WebRTC] error adding candidate on answer:', e);
+                    }
+                }
+                pendingCandidates[fromPeerId] = [];
+            }
+        } catch (err) {
+            console.warn('[WebRTC] handleIncomingAnswer error:', err);
+        }
+    }
+
+    async function handleIncomingIceCandidate(fromPeerId, candidate) {
+        try {
+            const pc = peerConnections[fromPeerId];
+            if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } else {
+                if (!pendingCandidates[fromPeerId]) pendingCandidates[fromPeerId] = [];
+                pendingCandidates[fromPeerId].push(candidate);
+            }
+        } catch (err) {
+            console.warn('[WebRTC] handleIncomingIceCandidate error:', err);
+        }
+    }
+
+    function handleMediaStateUpdate(participantId, mic_enabled, cam_enabled) {
+        participantMediaState[participantId] = {
+            mic_enabled: mic_enabled !== false,
+            cam_enabled: cam_enabled !== false
+        };
+        updateAllSeatsMediaUI();
+    }
+
+    function updateSeatMediaUI(seatId) {
+        if (!seatId) return;
+        const occupant = seatOccupants[seatId];
+        const mediaContainer = document.querySelector(`[data-seat-media="${seatId}"]`);
+        const numEl = document.querySelector(`[data-seat-number="${seatId}"]`);
+        const videoEl = document.querySelector(`[data-seat-video="${seatId}"]`);
+        const avatarEl = document.querySelector(`[data-seat-avatar="${seatId}"]`);
+        const micEl = document.querySelector(`[data-seat-mic="${seatId}"]`);
+        const camEl = document.querySelector(`[data-seat-cam="${seatId}"]`);
+
+        if (!mediaContainer) return;
+
+        if (!occupant) {
+            mediaContainer.classList.add('hidden');
+            if (numEl) numEl.classList.remove('hidden');
+            if (videoEl) {
+                videoEl.srcObject = null;
+                videoEl.classList.add('hidden');
+            }
+            return;
+        }
+
+        mediaContainer.classList.remove('hidden');
+        if (numEl) numEl.classList.add('hidden');
+
+        const pid = occupant.pid;
+        const isLocal = (pid === myParticipantId);
+        const mediaState = isLocal
+            ? localMediaState
+            : (participantMediaState[pid] || { mic_enabled: true, cam_enabled: true });
+        const stream = isLocal ? localStream : remoteStreams[pid];
+
+        if (micEl) micEl.textContent = mediaState.mic_enabled !== false ? '🎙️' : '🔇';
+        if (camEl) camEl.textContent = mediaState.cam_enabled !== false ? '📷' : '🚫';
+
+        const hasVideo = stream && stream.getVideoTracks && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+
+        if (mediaState.cam_enabled !== false && hasVideo) {
+            if (avatarEl) avatarEl.classList.add('hidden');
+            if (videoEl) {
+                videoEl.classList.remove('hidden');
+                if (videoEl.srcObject !== stream) {
+                    videoEl.srcObject = stream;
+                }
+                videoEl.muted = isLocal;
+                videoEl.play().catch(() => {});
+            }
+        } else {
+            if (videoEl) {
+                videoEl.classList.add('hidden');
+                videoEl.srcObject = null;
+            }
+            if (avatarEl) {
+                avatarEl.classList.remove('hidden');
+                const [c1, c2] = colorForId(pid || 'anon');
+                avatarEl.style.background = `linear-gradient(135deg, ${c1}, ${c2})`;
+                avatarEl.textContent = (occupant.name || '?').charAt(0).toUpperCase();
+            }
+        }
+    }
+
+    function updateAllSeatsMediaUI() {
+        for (let r = 0; r < DESK_ROWS; r++) {
+            for (let c = 0; c < DESK_COLS; c++) {
+                const seatId = `seat-${r * DESK_COLS + c + 1}`;
+                updateSeatMediaUI(seatId);
+            }
+        }
+    }
+
+    function cleanupWebRTC() {
+        Object.keys(peerConnections).forEach(closePeerConnection);
+        if (localStream) {
+            try {
+                localStream.getTracks().forEach(t => t.stop());
+            } catch (_) {}
+            localStream = null;
+        }
+    }
+
+    if (btnToggleMic) btnToggleMic.addEventListener('click', toggleMicrophone);
+    if (btnToggleCam) btnToggleCam.addEventListener('click', toggleCamera);
 
     // Toast
     function showToast(msg, type = 'info') {
@@ -598,6 +1008,8 @@
         }
         applyDisabledStyle(btnThumbsUp, !canInteract);
         applyDisabledStyle(btnRaiseHand, !canInteract);
+        applyDisabledStyle(btnToggleMic, !canInteract);
+        applyDisabledStyle(btnToggleCam, !canInteract);
     }
 
     function updateLobbyActionCopy() {
@@ -640,6 +1052,7 @@
     lobbyRoomId.addEventListener('keydown', (e) => { if (e.key === 'Enter') lobbyDisplayName.focus(); });
 
     btnLeave.addEventListener('click', () => {
+        cleanupWebRTC();
         disconnectWS();
         stopGameLoop();
         isSeated = false;
@@ -675,6 +1088,9 @@
             reconnectAttempts = 0;
             setConnStatus(true);
             connectPresenceWS();
+            if (canInteract) {
+                initLocalMedia();
+            }
             showToast(canInteract ? 'Connected to classroom' : 'Viewing classroom', 'success');
         };
 
@@ -696,6 +1112,7 @@
 
     function disconnectWS() {
         intentionalDisconnect = true;
+        cleanupWebRTC();
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         if (presenceReconnectTimer) { clearTimeout(presenceReconnectTimer); presenceReconnectTimer = null; }
         if (ws) { ws.close(); ws = null; }
@@ -888,6 +1305,11 @@
             case 'participant_joined':
                 if (data.participant_id !== myParticipantId) {
                     showToast(`${data.display_name} joined the classroom`, 'success');
+                    if (data.media_state) {
+                        participantMediaState[data.participant_id] = data.media_state;
+                    }
+                    syncMeshConnections();
+                    updateAllSeatsMediaUI();
                 }
                 break;
 
@@ -895,8 +1317,34 @@
                 showToast(`${data.display_name} left the classroom`, 'info');
                 delete participants[data.participant_id];
                 delete presenceByUser[data.participant_id];
+                closePeerConnection(data.participant_id);
                 renderOtherAvatars();
                 renderParticipantsList();
+                updateAllSeatsMediaUI();
+                break;
+
+            case 'signal_offer':
+                if (data.from && data.sdp) {
+                    handleIncomingOffer(data.from, data.sdp);
+                }
+                break;
+
+            case 'signal_answer':
+                if (data.from && data.sdp) {
+                    handleIncomingAnswer(data.from, data.sdp);
+                }
+                break;
+
+            case 'ice_candidate':
+                if (data.from && data.candidate) {
+                    handleIncomingIceCandidate(data.from, data.candidate);
+                }
+                break;
+
+            case 'media_state':
+                if (data.participant_id) {
+                    handleMediaStateUpdate(data.participant_id, data.mic_enabled, data.cam_enabled);
+                }
                 break;
 
             case 'position_update':
@@ -983,6 +1431,9 @@
         });
 
         (data.participants || []).forEach(p => {
+            if (p.media_state) {
+                participantMediaState[p.participant_id] = p.media_state;
+            }
             if (p.participant_id === myParticipantId) return;
 
             // Incoming positions may be:
@@ -1030,6 +1481,8 @@
             : (Object.keys(participants).length + (canInteract ? 1 : 0));
         renderOtherAvatars();
         renderParticipantsList();
+        syncMeshConnections();
+        updateAllSeatsMediaUI();
     }
 
     // Render other participants
@@ -1257,7 +1710,7 @@
             const dist = Math.hypot(myPos.x - cx, myPos.y - cy);
             if (dist < nearestDist) { nearestDist = dist; nearest = seatId; }
         });
-        if (nearest && nearestDist < 60) {
+        if (nearest && nearestDist < 95) {
             wsSend({ type: 'update_seat', seat_id: nearest });
         }
     }

@@ -6688,7 +6688,7 @@ class ClassroomDO(DurableObject):
     async def on_webSocketMessage(self, ws, message):
         try:
             raw_message = message if isinstance(message, str) else message.decode("utf-8")
-            if len(raw_message) > 8192:
+            if len(raw_message) > 65536:
                 return
             data = json.loads(raw_message)
         except Exception as exc:
@@ -6878,6 +6878,42 @@ class ClassroomDO(DurableObject):
             }))
             self._broadcast_room_state()
 
+        elif msg_type in ("signal_offer", "signal_answer", "ice_candidate"):
+            target_id = data.get("target_peer_id") or data.get("target_id")
+            if not target_id or not isinstance(target_id, str):
+                return
+
+            envelope = {
+                "type":                msg_type,
+                "sender_peer_id":      info["participant_id"],
+                "sender_display_name": info["display_name"],
+                "target_peer_id":      target_id,
+            }
+            if msg_type == "signal_offer":
+                envelope["offer"] = data.get("offer") or data.get("sdp")
+            elif msg_type == "signal_answer":
+                envelope["answer"] = data.get("answer") or data.get("sdp")
+            elif msg_type == "ice_candidate":
+                envelope["candidate"] = data.get("candidate")
+
+            for s_id, s_info in self.sessions.items():
+                if s_info.get("can_interact", True) and (s_info["participant_id"] == target_id or s_id == target_id):
+                    try:
+                        s_info["ws"].send(json.dumps(envelope))
+                    except Exception as exc:
+                        print(f"[ClassroomDO.signaling] error routing {msg_type} to {target_id}: {exc!r}")
+
+        elif msg_type == "media_state":
+            audio = bool(data.get("audio", True))
+            video = bool(data.get("video", True))
+            info["media_state"] = {"audio": audio, "video": video}
+            self._broadcast(json.dumps({
+                "type":           "media_state",
+                "participant_id": info["participant_id"],
+                "audio":          audio,
+                "video":          video,
+            }))
+
     async def on_webSocketClose(self, ws, code, reason, wasClean):
         session = self._session_for_ws(ws)
         if not session:
@@ -7010,6 +7046,7 @@ class ClassroomDO(DurableObject):
                     "direction":      info["direction"],
                     "is_moving":      info.get("is_moving", False),
                     "seat_id":        info.get("seat_id", ""),
+                    "media_state":    info.get("media_state", {"audio": True, "video": True}),
                 }
 
         self._broadcast(json.dumps({

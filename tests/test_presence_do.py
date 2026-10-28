@@ -525,3 +525,158 @@ class TestPresenceDispatch:
         # PRESENCE_DO must not have been touched
         env.PRESENCE_DO.idFromName.assert_not_called()
         assert resp.status == 404
+
+
+# ===========================================================================
+# 6.  ClassroomDO WebRTC Signaling (Issue 19)
+# ===========================================================================
+
+class TestClassroomDOSignaling:
+    def _make_classroom_do(self):
+        ctx = _make_ctx()
+        env = make_env()
+        return worker.ClassroomDO(ctx, env)
+
+    def _add_session(self, do, pid, dname="User", sid=None, can_interact=True):
+        sid = sid or f"sid-{pid}"
+        attachment = {
+            "session_id": sid,
+            "participant_id": pid,
+            "display_name": dname,
+            "position": {"x": 0.5, "y": 0.5},
+            "direction": "down",
+            "seat_id": "",
+            "can_interact": can_interact,
+        }
+        ws = _make_ws(attachment=attachment)
+        do.sessions[sid] = {
+            "ws": ws,
+            "participant_id": pid,
+            "display_name": dname,
+            "position": {"x": 0.5, "y": 0.5},
+            "direction": "down",
+            "is_moving": False,
+            "seat_id": "",
+            "can_interact": can_interact,
+        }
+        return ws
+
+    @pytest.mark.asyncio
+    async def test_signal_offer_routed_to_target_peer(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+        ws_charlie = self._add_session(do, "charlie", "Charlie")
+
+        msg = json.dumps({
+            "type": "signal_offer",
+            "target_peer_id": "bob",
+            "offer": {"type": "offer", "sdp": "v=0\r\no=alice..."},
+        })
+        await do.on_webSocketMessage(ws_alice, msg)
+
+        # Bob should receive the forwarded offer with sender info
+        ws_bob.send.assert_called_once()
+        forwarded = json.loads(ws_bob.send.call_args[0][0])
+        assert forwarded["type"] == "signal_offer"
+        assert forwarded["sender_peer_id"] == "alice"
+        assert forwarded["sender_display_name"] == "Alice"
+        assert forwarded["target_peer_id"] == "bob"
+        assert forwarded["offer"] == {"type": "offer", "sdp": "v=0\r\no=alice..."}
+
+        # Charlie should NOT receive the offer
+        ws_charlie.send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_signal_answer_routed_to_target_peer(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        msg = json.dumps({
+            "type": "signal_answer",
+            "target_peer_id": "alice",
+            "answer": {"type": "answer", "sdp": "v=0\r\no=bob..."},
+        })
+        await do.on_webSocketMessage(ws_bob, msg)
+
+        ws_alice.send.assert_called_once()
+        forwarded = json.loads(ws_alice.send.call_args[0][0])
+        assert forwarded["type"] == "signal_answer"
+        assert forwarded["sender_peer_id"] == "bob"
+        assert forwarded["target_peer_id"] == "alice"
+        assert forwarded["answer"] == {"type": "answer", "sdp": "v=0\r\no=bob..."}
+
+    @pytest.mark.asyncio
+    async def test_ice_candidate_routed_to_target_peer(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        candidate_data = {
+            "candidate": "candidate:1 1 UDP 2122252543 192.168.1.100 54321 typ host",
+            "sdpMid": "0",
+            "sdpMLineIndex": 0,
+        }
+        msg = json.dumps({
+            "type": "ice_candidate",
+            "target_peer_id": "bob",
+            "candidate": candidate_data,
+        })
+        await do.on_webSocketMessage(ws_alice, msg)
+
+        ws_bob.send.assert_called_once()
+        forwarded = json.loads(ws_bob.send.call_args[0][0])
+        assert forwarded["type"] == "ice_candidate"
+        assert forwarded["sender_peer_id"] == "alice"
+        assert forwarded["candidate"] == candidate_data
+
+    @pytest.mark.asyncio
+    async def test_media_state_broadcasts_to_all_peers(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        msg = json.dumps({
+            "type": "media_state",
+            "audio": False,
+            "video": True,
+        })
+        await do.on_webSocketMessage(ws_alice, msg)
+
+        # Both sessions should receive the broadcast media_state
+        for ws in (ws_alice, ws_bob):
+            assert any(
+                json.loads(call[0][0]).get("type") == "media_state"
+                and json.loads(call[0][0]).get("audio") is False
+                and json.loads(call[0][0]).get("video") is True
+                and json.loads(call[0][0]).get("participant_id") == "alice"
+                for call in ws.send.call_args_list
+            )
+
+    @pytest.mark.asyncio
+    async def test_signaling_to_unknown_target_does_not_raise(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+
+        msg = json.dumps({
+            "type": "signal_offer",
+            "target_peer_id": "ghost-user",
+            "offer": {"type": "offer", "sdp": "v=0..."},
+        })
+        await do.on_webSocketMessage(ws_alice, msg)  # Must not raise
+
+    @pytest.mark.asyncio
+    async def test_read_only_viewer_cannot_send_signal(self):
+        do = self._make_classroom_do()
+        ws_anon = self._add_session(do, "anon", "Anonymous", can_interact=False)
+        ws_bob  = self._add_session(do, "bob", "Bob")
+
+        msg = json.dumps({
+            "type": "signal_offer",
+            "target_peer_id": "bob",
+            "offer": {"type": "offer", "sdp": "v=0..."},
+        })
+        await do.on_webSocketMessage(ws_anon, msg)
+        ws_bob.send.assert_not_called()
+
