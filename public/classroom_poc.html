@@ -114,6 +114,52 @@
             color: #9a3412 !important;
         }
         html:not(.dark) .vc-theme #viewerBanner a { color: #0f766e !important; }
+
+        /* Ensure Meet controls and floating trays maintain high-contrast dark styling and crisp white text */
+        .vc-theme #deviceMenuTray,
+        html:not(.dark) .vc-theme #deviceMenuTray,
+        .vc-theme #meetControlBar,
+        html:not(.dark) .vc-theme #meetControlBar,
+        .vc-theme #reactionsTray,
+        html:not(.dark) .vc-theme #reactionsTray {
+            background-color: #1c1d1f !important;
+            border-color: #3c4043 !important;
+            color: #ffffff !important;
+        }
+
+        .vc-theme #deviceMenuTray select,
+        html:not(.dark) .vc-theme #deviceMenuTray select {
+            color: #ffffff !important;
+            background-color: transparent !important;
+            font-weight: 600 !important;
+        }
+
+        .vc-theme #deviceMenuTray select option,
+        html:not(.dark) .vc-theme #deviceMenuTray select option {
+            background-color: #202124 !important;
+            color: #ffffff !important;
+        }
+
+        .vc-theme #deviceMenuTray [data-device-pill],
+        html:not(.dark) .vc-theme #deviceMenuTray [data-device-pill] {
+            background-color: #2b2c2f !important;
+            border-color: #3c4043 !important;
+            color: #ffffff !important;
+        }
+
+        .vc-theme #deviceMenuTray svg,
+        html:not(.dark) .vc-theme #deviceMenuTray svg,
+        .vc-theme #meetControlBar svg,
+        html:not(.dark) .vc-theme #meetControlBar svg {
+            color: #e8eaed !important;
+        }
+
+        .vc-theme #deviceMenuTray button,
+        html:not(.dark) .vc-theme #deviceMenuTray button,
+        .vc-theme #meetControlBar button,
+        html:not(.dark) .vc-theme #meetControlBar button {
+            color: #e8eaed !important;
+        }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #14b8a6; border-radius: 999px; }
@@ -269,31 +315,31 @@
             <!-- Meet Controls & Popups Area -->
             <div class="relative flex flex-col items-center shrink-0 w-full">
                 <!-- Device Selection Menu (Screenshot 2) -->
-                <div id="deviceMenuTray" class="hidden mb-2 px-3 py-2 bg-[#1c1d1f] border border-gray-700/80 rounded-2xl shadow-2xl flex flex-wrap items-center justify-center gap-2.5 text-xs text-gray-200 z-50 backdrop-blur-md">
-                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
-                        <svg class="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div id="deviceMenuTray" class="hidden mb-2 px-3 py-2 bg-[#1c1d1f] border border-[#3c4043] rounded-2xl shadow-2xl flex flex-wrap items-center justify-center gap-2.5 text-xs text-white z-50 backdrop-blur-md">
+                    <div data-device-pill class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-[#3c4043] text-white">
+                        <svg class="w-4 h-4 text-gray-200 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="9" y="3" width="6" height="11" rx="3" fill="none"/>
                             <path d="M5 10a7 7 0 0 0 14 0" fill="none"/>
                             <line x1="12" y1="17" x2="12" y2="21"/>
                         </svg>
-                        <select id="selectMicDevice" aria-label="Microphone device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                        <select id="selectMicDevice" aria-label="Microphone device" class="bg-transparent text-white font-semibold text-xs focus:outline-none max-w-[140px] sm:max-w-[180px] truncate cursor-pointer" style="color:#ffffff !important;"></select>
                     </div>
-                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
-                        <svg class="w-4 h-4 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <div data-device-pill class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-[#3c4043] text-white">
+                        <svg class="w-4 h-4 text-gray-200 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>
                             <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
                             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
                         </svg>
-                        <select id="selectSpeakerDevice" aria-label="Speaker device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                        <select id="selectSpeakerDevice" aria-label="Speaker device" class="bg-transparent text-white font-semibold text-xs focus:outline-none max-w-[140px] sm:max-w-[180px] truncate cursor-pointer" style="color:#ffffff !important;"></select>
                     </div>
-                    <div class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-gray-700/60">
-                        <svg class="w-4 h-4 text-gray-300" viewBox="0 0 24 24">
+                    <div data-device-pill class="flex items-center gap-1.5 bg-[#2b2c2f] px-2.5 py-1.5 rounded-xl border border-[#3c4043] text-white">
+                        <svg class="w-4 h-4 text-gray-200 shrink-0" viewBox="0 0 24 24">
                             <rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="2"/>
                             <polygon points="15.5,10 21.5,6.5 21.5,17.5 15.5,14" fill="currentColor"/>
                         </svg>
-                        <select id="selectCamDevice" aria-label="Camera device" class="bg-transparent text-gray-100 text-xs focus:outline-none max-w-[130px] sm:max-w-[160px] truncate cursor-pointer"></select>
+                        <select id="selectCamDevice" aria-label="Camera device" class="bg-transparent text-white font-semibold text-xs focus:outline-none max-w-[140px] sm:max-w-[180px] truncate cursor-pointer" style="color:#ffffff !important;"></select>
                     </div>
-                    <button id="btnCloseDeviceMenu" type="button" class="p-1 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition" title="Close device options">
+                    <button id="btnCloseDeviceMenu" type="button" class="p-1 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg transition" title="Close device options">
                         ✕
                     </button>
                 </div>
@@ -1319,12 +1365,13 @@
                 selectMicDevice.innerHTML = '';
                 const mics = devices.filter(d => d.kind === 'audioinput');
                 if (mics.length === 0) {
-                    selectMicDevice.innerHTML = '<option value="">Default Microphone</option>';
+                    selectMicDevice.innerHTML = '<option value="" style="background-color:#202124; color:#ffffff;">Default Microphone</option>';
                 } else {
                     mics.forEach((d, idx) => {
                         const opt = document.createElement('option');
                         opt.value = d.deviceId;
                         opt.textContent = d.label || `Microphone ${idx + 1}`;
+                        opt.style.cssText = 'background-color:#202124; color:#ffffff; font-weight:500;';
                         selectMicDevice.appendChild(opt);
                     });
                 }
@@ -1334,12 +1381,13 @@
                 selectSpeakerDevice.innerHTML = '';
                 const speakers = devices.filter(d => d.kind === 'audiooutput');
                 if (speakers.length === 0) {
-                    selectSpeakerDevice.innerHTML = '<option value="">Default Speaker</option>';
+                    selectSpeakerDevice.innerHTML = '<option value="" style="background-color:#202124; color:#ffffff;">Default Speaker</option>';
                 } else {
                     speakers.forEach((d, idx) => {
                         const opt = document.createElement('option');
                         opt.value = d.deviceId;
                         opt.textContent = d.label || `Speaker ${idx + 1}`;
+                        opt.style.cssText = 'background-color:#202124; color:#ffffff; font-weight:500;';
                         selectSpeakerDevice.appendChild(opt);
                     });
                 }
@@ -1349,12 +1397,13 @@
                 selectCamDevice.innerHTML = '';
                 const cams = devices.filter(d => d.kind === 'videoinput');
                 if (cams.length === 0) {
-                    selectCamDevice.innerHTML = '<option value="">Default Camera</option>';
+                    selectCamDevice.innerHTML = '<option value="" style="background-color:#202124; color:#ffffff;">Default Camera</option>';
                 } else {
                     cams.forEach((d, idx) => {
                         const opt = document.createElement('option');
                         opt.value = d.deviceId;
                         opt.textContent = d.label || `Camera ${idx + 1}`;
+                        opt.style.cssText = 'background-color:#202124; color:#ffffff; font-weight:500;';
                         selectCamDevice.appendChild(opt);
                     });
                 }
