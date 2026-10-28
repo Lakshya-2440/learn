@@ -6942,14 +6942,17 @@ class ClassroomDO(DurableObject):
                     pass
                 return
 
+            stream_id = data.get("stream_id")
             self.screen_sharer = {
                 "participant_id": info["participant_id"],
                 "display_name":   info["display_name"],
+                "stream_id":      stream_id,
             }
             self._broadcast(json.dumps({
                 "type":           "screen_share_started",
                 "participant_id": info["participant_id"],
                 "display_name":   info["display_name"],
+                "stream_id":      stream_id,
             }))
             self._broadcast_room_state()
 

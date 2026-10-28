@@ -687,9 +687,10 @@ class TestClassroomDOSignaling:
         ws_bob   = self._add_session(do, "bob", "Bob")
 
         # Alice starts screen share
-        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "start_screen_share"}))
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "start_screen_share", "stream_id": "stream-screen-xyz"}))
         assert do.screen_sharer is not None
         assert do.screen_sharer["participant_id"] == "alice"
+        assert do.screen_sharer["stream_id"] == "stream-screen-xyz"
 
         ws_bob.send.reset_mock()
         # Bob tries to start screen share while Alice is sharing -> rejected
