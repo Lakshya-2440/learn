@@ -622,6 +622,17 @@
                 localMediaState.mic_enabled = false;
             } catch (_) {}
         }
+        // Attach newly acquired local tracks to any already-created peer connections
+        if (localStream) {
+            Object.values(peerConnections).forEach(pc => {
+                localStream.getTracks().forEach(track => {
+                    const senders = pc.getSenders ? pc.getSenders() : [];
+                    if (!senders.some(s => s.track && s.track.kind === track.kind)) {
+                        try { pc.addTrack(track, localStream); } catch (_) {}
+                    }
+                });
+            });
+        }
         updateMediaControlUI();
         broadcastMediaState();
         updateAllSeatsMediaUI();
@@ -704,10 +715,12 @@
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                const candData = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
                 wsSend({
                     type: 'ice_candidate',
+                    target_peer_id: peerId,
                     target: peerId,
-                    candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+                    candidate: candData
                 });
             }
         };
@@ -730,17 +743,19 @@
             }
 
             // Route audio to audio element for playback
-            let audioEl = remoteAudioElements[peerId];
-            if (!audioEl) {
-                audioEl = document.createElement('audio');
-                audioEl.autoplay = true;
-                audioEl.playsInline = true;
-                document.body.appendChild(audioEl);
-                remoteAudioElements[peerId] = audioEl;
-            }
-            if (audioEl.srcObject !== stream) {
-                audioEl.srcObject = stream;
-                audioEl.play().catch(() => {});
+            if (event.track.kind === 'audio' || stream.getAudioTracks().length > 0) {
+                let audioEl = remoteAudioElements[peerId];
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
+                    audioEl.autoplay = true;
+                    audioEl.playsInline = true;
+                    document.body.appendChild(audioEl);
+                    remoteAudioElements[peerId] = audioEl;
+                }
+                if (audioEl.srcObject !== stream) {
+                    audioEl.srcObject = stream;
+                    audioEl.play().catch(() => {});
+                }
             }
 
             updateAllSeatsMediaUI();
@@ -774,10 +789,14 @@
     }
 
     async function syncMeshConnections() {
-        if (!canInteract || !localStream) return;
-        const peerIds = Object.keys(participants).slice(0, 6);
+        if (!canInteract) return;
+        const peerIdsSet = new Set(Object.keys(participants));
+        Object.values(seatOccupants).forEach(occ => {
+            if (occ && occ.pid) peerIdsSet.add(occ.pid);
+        });
+        const peerIds = Array.from(peerIdsSet).slice(0, 6);
         for (const peerId of peerIds) {
-            if (peerId === myParticipantId) continue;
+            if (!peerId || peerId === myParticipantId) continue;
             // Deterministic initiator avoids offer glare (lower participant ID creates offer)
             if (myParticipantId < peerId && !peerConnections[peerId]) {
                 try {
@@ -787,7 +806,9 @@
                     await pc.setLocalDescription(offer);
                     wsSend({
                         type: 'signal_offer',
+                        target_peer_id: peerId,
                         target: peerId,
+                        offer: { type: 'offer', sdp: offer.sdp },
                         sdp: offer.sdp
                     });
                 } catch (err) {
@@ -802,7 +823,8 @@
         try {
             const pc = getOrCreatePeerConnection(fromPeerId);
             if (!pc) return;
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
+            const sdpString = (typeof sdp === 'object' && sdp.sdp) ? sdp.sdp : sdp;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: sdpString }));
             if (pendingCandidates[fromPeerId]) {
                 for (const cand of pendingCandidates[fromPeerId]) {
                     try {
@@ -817,7 +839,9 @@
             await pc.setLocalDescription(answer);
             wsSend({
                 type: 'signal_answer',
+                target_peer_id: fromPeerId,
                 target: fromPeerId,
+                answer: { type: 'answer', sdp: answer.sdp },
                 sdp: answer.sdp
             });
         } catch (err) {
@@ -829,7 +853,8 @@
         try {
             const pc = peerConnections[fromPeerId];
             if (!pc) return;
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
+            const sdpString = (typeof sdp === 'object' && sdp.sdp) ? sdp.sdp : sdp;
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: sdpString }));
             if (pendingCandidates[fromPeerId]) {
                 for (const cand of pendingCandidates[fromPeerId]) {
                     try {
@@ -902,7 +927,8 @@
         if (micEl) micEl.textContent = mediaState.mic_enabled !== false ? '🎙️' : '🔇';
         if (camEl) camEl.textContent = mediaState.cam_enabled !== false ? '📷' : '🚫';
 
-        const hasVideo = stream && stream.getVideoTracks && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
+        const videoTracks = stream && stream.getVideoTracks ? stream.getVideoTracks() : [];
+        const hasVideo = videoTracks.length > 0 && videoTracks.some(t => t.readyState !== 'ended');
 
         if (mediaState.cam_enabled !== false && hasVideo) {
             if (avatarEl) avatarEl.classList.add('hidden');
@@ -911,7 +937,8 @@
                 if (videoEl.srcObject !== stream) {
                     videoEl.srcObject = stream;
                 }
-                videoEl.muted = isLocal;
+                videoEl.muted = true; // Desk video tile muted to guarantee zero autoplay blocks
+                videoEl.playsInline = true;
                 videoEl.play().catch(() => {});
             }
         } else {
@@ -1296,6 +1323,7 @@
                 myPos.y = classroomCanvas.getBoundingClientRect().height * 0.5;
                 myCharacter.style.left = myPos.x + 'px';
                 myCharacter.style.top  = myPos.y + 'px';
+                syncMeshConnections();
                 break;
 
             case 'room_state':
@@ -1305,47 +1333,63 @@
             case 'participant_joined':
                 if (data.participant_id !== myParticipantId) {
                     showToast(`${data.display_name} joined the classroom`, 'success');
+                    if (!participants[data.participant_id]) {
+                        participants[data.participant_id] = {
+                            display_name: data.display_name || data.participant_id,
+                            normPos: { x: 0.5, y: 0.5 },
+                            direction: 'down',
+                            is_moving: false,
+                            seat_id: '',
+                        };
+                    }
                     if (data.media_state) {
-                        participantMediaState[data.participant_id] = data.media_state;
+                        const m = data.media_state;
+                        participantMediaState[data.participant_id] = {
+                            mic_enabled: m.mic_enabled !== undefined ? m.mic_enabled : m.audio,
+                            cam_enabled: m.cam_enabled !== undefined ? m.cam_enabled : m.video,
+                        };
                     }
                     syncMeshConnections();
                     updateAllSeatsMediaUI();
                 }
                 break;
 
-            case 'participant_left':
-                showToast(`${data.display_name} left the classroom`, 'info');
-                delete participants[data.participant_id];
-                delete presenceByUser[data.participant_id];
-                closePeerConnection(data.participant_id);
-                renderOtherAvatars();
-                renderParticipantsList();
-                updateAllSeatsMediaUI();
-                break;
-
-            case 'signal_offer':
-                if (data.from && data.sdp) {
-                    handleIncomingOffer(data.from, data.sdp);
+            case 'signal_offer': {
+                const fromId = data.sender_peer_id || data.from;
+                const sdp = (typeof data.offer === 'object' && data.offer?.sdp) ? data.offer.sdp : (data.sdp || data.offer);
+                if (fromId && sdp) {
+                    handleIncomingOffer(fromId, sdp);
                 }
                 break;
+            }
 
-            case 'signal_answer':
-                if (data.from && data.sdp) {
-                    handleIncomingAnswer(data.from, data.sdp);
+            case 'signal_answer': {
+                const fromId = data.sender_peer_id || data.from;
+                const sdp = (typeof data.answer === 'object' && data.answer?.sdp) ? data.answer.sdp : (data.sdp || data.answer);
+                if (fromId && sdp) {
+                    handleIncomingAnswer(fromId, sdp);
                 }
                 break;
+            }
 
-            case 'ice_candidate':
-                if (data.from && data.candidate) {
-                    handleIncomingIceCandidate(data.from, data.candidate);
+            case 'ice_candidate': {
+                const fromId = data.sender_peer_id || data.from;
+                const cand = data.candidate;
+                if (fromId && cand) {
+                    handleIncomingIceCandidate(fromId, cand);
                 }
                 break;
+            }
 
-            case 'media_state':
-                if (data.participant_id) {
-                    handleMediaStateUpdate(data.participant_id, data.mic_enabled, data.cam_enabled);
+            case 'media_state': {
+                const pid = data.participant_id;
+                const mic = (data.mic_enabled !== undefined) ? data.mic_enabled : data.audio;
+                const cam = (data.cam_enabled !== undefined) ? data.cam_enabled : data.video;
+                if (pid) {
+                    handleMediaStateUpdate(pid, mic, cam);
                 }
                 break;
+            }
 
             case 'position_update':
                 if (data.participant_id !== myParticipantId) {
@@ -1393,6 +1437,8 @@
                 }
                 updateSeatLabel(data.seat_id, data.display_name, data.participant_id);
                 showToast(`${data.display_name} took ${data.seat_id}`, 'info');
+                syncMeshConnections();
+                updateAllSeatsMediaUI();
                 renderOtherAvatars();
                 renderParticipantsList();
                 break;
