@@ -6604,8 +6604,8 @@ class ClassroomDO(DurableObject):
             participant_id = authenticated_user["id"]
             display_name = authenticated_user.get("username") or participant_id
         else:
-            # Anonymous clients may view the classroom, but they are read-only.
-            if token_param or not participant_param:
+            # Anonymous clients may enter when participant_id is provided
+            if not participant_param:
                 return Response(
                     json.dumps({"error": "Authentication required"}),
                     status=401,
@@ -7220,7 +7220,7 @@ class PresenceDO(DurableObject):
 
         allow_presence_setting = getattr(self.env, "ALLOW_ANON_PRESENCE", None)
         if allow_presence_setting is None:
-            allow_presence_setting = getattr(self.env, "ALLOW_ANON_CLASSROOM_POC", "")
+            allow_presence_setting = getattr(self.env, "ALLOW_ANON_CLASSROOM_POC", "true")
         allow_anonymous = str(allow_presence_setting).lower() in {"1", "true", "yes"}
         authenticated_user = verify_token(token_param or "", self.env.JWT_SECRET) if token_param else None
 
@@ -7229,7 +7229,7 @@ class PresenceDO(DurableObject):
             display_name = str(authenticated_user.get("username") or user_id)
             can_interact = True
         else:
-            if token_param or not allow_anonymous or not user_param:
+            if not allow_anonymous or not user_param:
                 return Response(
                     json.dumps({"error": "Authentication required"}),
                     status=401,

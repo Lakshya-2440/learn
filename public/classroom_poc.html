@@ -274,7 +274,7 @@
         <!-- Main Viewport (Floor & Meet Stage) -->
         <div class="flex-1 flex flex-col p-3 gap-3 min-w-0 min-h-0">
             <div id="viewportContainer" class="relative flex-1 min-h-[300px] lg:min-h-[420px] w-full min-w-0 min-h-0 overflow-hidden">
-                <div id="classroomCanvas" class="absolute inset-0 rounded-xl overflow-hidden border border-gray-800 shadow-2xl transition-all duration-300 ease-out z-10 opacity-100 scale-100">
+                <div id="classroomCanvas" tabindex="0" class="absolute inset-0 rounded-xl overflow-hidden border border-gray-800 shadow-2xl transition-all duration-300 ease-out z-10 opacity-100 scale-100 focus:outline-none focus:ring-1 focus:ring-teal-500/40 cursor-default">
                     <!-- Walls -->
                     <div class="absolute inset-0" style="background: linear-gradient(180deg, #E6E2D7 0%, #E6E2D7 38%, #C7B299 38%, #C7B299 100%);"></div>
                     <!-- Wainscoting line -->
@@ -2264,9 +2264,11 @@
         myInitial.textContent = myDisplayName.charAt(0).toUpperCase();
         myNameLabel.textContent = myDisplayName;
 
-        lobby.classList.add('hidden');
-        classroomScreen.classList.remove('hidden');
-        classroomScreen.classList.add('flex');
+        if (lobby) lobby.classList.add('hidden');
+        if (classroomScreen) {
+            classroomScreen.classList.remove('hidden');
+            classroomScreen.classList.add('flex');
+        }
 
         renderDesks();
         ensureLocalMedia();
@@ -2275,29 +2277,42 @@
         updatePresenceControls();
         updateMediaControlUI();
         refreshIcons();
+        if (classroomCanvas) {
+            classroomCanvas.focus();
+        }
     }
 
-    btnJoin.addEventListener('click', joinClassroom);
+    if (btnJoin) btnJoin.addEventListener('click', joinClassroom);
 
-    lobbyDisplayName.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinClassroom(); });
-    lobbyRoomId.addEventListener('keydown', (e) => { if (e.key === 'Enter') lobbyDisplayName.focus(); });
+    if (lobbyDisplayName) {
+        lobbyDisplayName.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinClassroom(); });
+    }
+    if (lobbyRoomId) {
+        lobbyRoomId.addEventListener('keydown', (e) => { if (e.key === 'Enter' && lobbyDisplayName) lobbyDisplayName.focus(); });
+    }
 
-    btnLeave.addEventListener('click', () => {
-        cleanupWebRTC();
-        disconnectWS();
-        stopGameLoop();
-        isSeated = false;
-        currentSeat = null;
-        classroomScreen.classList.add('hidden');
-        classroomScreen.classList.remove('flex');
-        lobby.classList.remove('hidden');
-        Object.keys(participants).forEach(k => delete participants[k]);
-        Object.keys(presenceByUser).forEach(k => delete presenceByUser[k]);
-        avatarLayer.innerHTML = '';
-        chatMessages.innerHTML = '<div class="text-center text-xs text-gray-600 py-6">No messages yet</div>';
-        chatFirstMessage = true;
-        updateLobbyActionCopy();
-    });
+    if (btnLeave) {
+        btnLeave.addEventListener('click', () => {
+            cleanupWebRTC();
+            disconnectWS();
+            stopGameLoop();
+            isSeated = false;
+            currentSeat = null;
+            if (classroomScreen) {
+                classroomScreen.classList.add('hidden');
+                classroomScreen.classList.remove('flex');
+            }
+            if (lobby) lobby.classList.remove('hidden');
+            Object.keys(participants).forEach(k => delete participants[k]);
+            Object.keys(presenceByUser).forEach(k => delete presenceByUser[k]);
+            if (avatarLayer) avatarLayer.innerHTML = '';
+            if (chatMessages) {
+                chatMessages.innerHTML = '<div class="text-center text-xs text-gray-600 py-6">No messages yet</div>';
+                chatFirstMessage = true;
+            }
+            updateLobbyActionCopy();
+        });
+    }
 
     // WebSocket
     function connectWS() {
@@ -3037,64 +3052,70 @@
         renderSeatLabels();
     }
 
-    btnThumbsUp.addEventListener('click', () => {
-        if (!canInteract) setInteractionMode(true);
-        const strMyId = String(myParticipantId || 'me');
-        const current = getPresence(strMyId) || {};
-        const nextEmoji = current.emoji === '👍' ? '' : '👍';
-        pendingSelfPresenceReplay = true;
-        setPresence(strMyId, {
-            x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
-            y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
-            emoji: nextEmoji,
-            hand_raised: current.hand_raised === true,
-            display_name: current.display_name || myDisplayName,
+    if (btnThumbsUp) {
+        btnThumbsUp.addEventListener('click', () => {
+            if (!canInteract) setInteractionMode(true);
+            const strMyId = String(myParticipantId || 'me');
+            const current = getPresence(strMyId) || {};
+            const nextEmoji = current.emoji === '👍' ? '' : '👍';
+            pendingSelfPresenceReplay = true;
+            setPresence(strMyId, {
+                x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
+                y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
+                emoji: nextEmoji,
+                hand_raised: current.hand_raised === true,
+                display_name: current.display_name || myDisplayName,
+            });
+            renderOtherAvatars();
+            renderParticipantsList();
+            renderSeatLabels();
+            updatePresenceControls();
+            presenceSend({ type: 'presence', emoji: nextEmoji });
         });
-        renderOtherAvatars();
-        renderParticipantsList();
-        renderSeatLabels();
-        updatePresenceControls();
-        presenceSend({ type: 'presence', emoji: nextEmoji });
-    });
+    }
 
-    btnRaiseHand.addEventListener('click', () => {
-        if (!canInteract) setInteractionMode(true);
-        const strMyId = String(myParticipantId || 'me');
-        const current = getPresence(strMyId) || {};
-        const nextHandRaised = current.hand_raised !== true;
-        pendingSelfPresenceReplay = true;
-        setPresence(strMyId, {
-            x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
-            y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
-            emoji: typeof current.emoji === 'string' ? current.emoji : '',
-            hand_raised: nextHandRaised,
-            display_name: current.display_name || myDisplayName,
+    if (btnRaiseHand) {
+        btnRaiseHand.addEventListener('click', () => {
+            if (!canInteract) setInteractionMode(true);
+            const strMyId = String(myParticipantId || 'me');
+            const current = getPresence(strMyId) || {};
+            const nextHandRaised = current.hand_raised !== true;
+            pendingSelfPresenceReplay = true;
+            setPresence(strMyId, {
+                x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
+                y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
+                emoji: typeof current.emoji === 'string' ? current.emoji : '',
+                hand_raised: nextHandRaised,
+                display_name: current.display_name || myDisplayName,
+            });
+            if (nextHandRaised) {
+                spawnFloatingEmoji('✋');
+                showToast('You raised your hand ✋', 'info');
+            } else {
+                showToast('You lowered your hand', 'info');
+            }
+            updatePresenceControls();
+            renderOtherAvatars();
+            renderParticipantsList();
+            renderSeatLabels();
+            updateAllSeatsMediaUI();
+            renderStageFilmstrip();
+            wsSend({ type: 'hand_raised', hand_raised: nextHandRaised });
+            presenceSend({ type: 'presence', hand_raised: nextHandRaised });
         });
-        if (nextHandRaised) {
-            spawnFloatingEmoji('✋');
-            showToast('You raised your hand ✋', 'info');
-        } else {
-            showToast('You lowered your hand', 'info');
-        }
-        updatePresenceControls();
-        renderOtherAvatars();
-        renderParticipantsList();
-        renderSeatLabels();
-        updateAllSeatsMediaUI();
-        renderStageFilmstrip();
-        wsSend({ type: 'hand_raised', hand_raised: nextHandRaised });
-        presenceSend({ type: 'presence', hand_raised: nextHandRaised });
-    });
+    }
 
     // Chat
-    chatForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (!canInteract) { loginForInteraction(); return; }
-        const text = chatInput.value.trim();
-        if (!text) return;
-        wsSend({ type: 'chat_message', text, timestamp: new Date().toISOString() });
-        chatInput.value = '';
-    });
+    if (chatForm) {
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!canInteract) { loginForInteraction(); return; }
+            const text = chatInput.value.trim();
+            if (!text) return;
+            wsSend({ type: 'chat_message', text, timestamp: new Date().toISOString() });
+            chatInput.value = '';
+        });
+    }
 
     function appendChatMessage(name, text, isSelf) {
         if (chatFirstMessage) { chatMessages.innerHTML = ''; chatFirstMessage = false; }
@@ -3135,6 +3156,12 @@
     let myIsMoving  = false;
     let wasMoving   = false;
 
+    if (classroomCanvas) {
+        classroomCanvas.addEventListener('click', () => {
+            classroomCanvas.focus();
+        });
+    }
+
     function isTypingInInput(target) {
         if (!target) return false;
         const tag = target.tagName;
@@ -3143,17 +3170,33 @@
 
     window.addEventListener('keydown', (e) => {
         if (isTypingInInput(e.target)) return;
-        const key = e.key.toLowerCase();
-        if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(key)) {
-            if (!isSeated) {
-                if (key === 'arrowup' || key === 'w') keysPressed.ArrowUp = true;
-                if (key === 'arrowdown' || key === 's') keysPressed.ArrowDown = true;
-                if (key === 'arrowleft' || key === 'a') keysPressed.ArrowLeft = true;
-                if (key === 'arrowright' || key === 'd') keysPressed.ArrowRight = true;
-                e.preventDefault();
+        const key = (e.key || '').toLowerCase();
+        const code = e.code || '';
+        const keyCode = e.keyCode || 0;
+
+        const isUp    = key === 'arrowup'    || key === 'w' || code === 'ArrowUp'    || code === 'KeyW' || keyCode === 38 || keyCode === 87;
+        const isDown  = key === 'arrowdown'  || key === 's' || code === 'ArrowDown'  || code === 'KeyS' || keyCode === 40 || keyCode === 83;
+        const isLeft  = key === 'arrowleft'  || key === 'a' || code === 'ArrowLeft'  || code === 'KeyA' || keyCode === 37 || keyCode === 65;
+        const isRight = key === 'arrowright' || key === 'd' || code === 'ArrowRight' || code === 'KeyD' || keyCode === 39 || keyCode === 68;
+        const isE     = key === 'e' || code === 'KeyE' || keyCode === 69;
+
+        if (isUp || isDown || isLeft || isRight) {
+            if (isSeated) {
+                // Auto stand-up when movement key is pressed
+                const seatToLeave = currentSeat;
+                isSeated = false;
+                currentSeat = null;
+                myCharacter.style.display = '';
+                wsSend({ type: 'leave_seat', seat_id: seatToLeave });
+                showToast('You stood up', 'info');
             }
+            if (isUp)    keysPressed.ArrowUp    = true;
+            if (isDown)  keysPressed.ArrowDown  = true;
+            if (isLeft)  keysPressed.ArrowLeft  = true;
+            if (isRight) keysPressed.ArrowRight = true;
+            e.preventDefault();
         }
-        if (key === 'e') {
+        if (isE) {
             e.preventDefault();
             handleSeatInteraction();
         }
@@ -3161,14 +3204,19 @@
 
     window.addEventListener('keyup', (e) => {
         if (isTypingInInput(e.target)) return;
-        const key = e.key.toLowerCase();
-        if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(key)) {
-            if (key === 'arrowup' || key === 'w') keysPressed.ArrowUp = false;
-            if (key === 'arrowdown' || key === 's') keysPressed.ArrowDown = false;
-            if (key === 'arrowleft' || key === 'a') keysPressed.ArrowLeft = false;
-            if (key === 'arrowright' || key === 'd') keysPressed.ArrowRight = false;
-            e.preventDefault();
-        }
+        const key = (e.key || '').toLowerCase();
+        const code = e.code || '';
+        const keyCode = e.keyCode || 0;
+
+        const isUp    = key === 'arrowup'    || key === 'w' || code === 'ArrowUp'    || code === 'KeyW' || keyCode === 38 || keyCode === 87;
+        const isDown  = key === 'arrowdown'  || key === 's' || code === 'ArrowDown'  || code === 'KeyS' || keyCode === 40 || keyCode === 83;
+        const isLeft  = key === 'arrowleft'  || key === 'a' || code === 'ArrowLeft'  || code === 'KeyA' || keyCode === 37 || keyCode === 65;
+        const isRight = key === 'arrowright' || key === 'd' || code === 'ArrowRight' || code === 'KeyD' || keyCode === 39 || keyCode === 68;
+
+        if (isUp)    keysPressed.ArrowUp    = false;
+        if (isDown)  keysPressed.ArrowDown  = false;
+        if (isLeft)  keysPressed.ArrowLeft  = false;
+        if (isRight) keysPressed.ArrowRight = false;
     });
 
     function handleSeatInteraction() {
@@ -3209,7 +3257,7 @@
         function tick() {
             const accel    = 0.8;
             const friction = 0.85;
-            const canvasRect = classroomCanvas.getBoundingClientRect();
+            const canvasRect = classroomCanvas ? classroomCanvas.getBoundingClientRect() : null;
             const pad = 20;
 
             if (!isSeated) {
@@ -3222,8 +3270,11 @@
             myVel.x *= friction;
             myVel.y *= friction;
 
-            myPos.x = Math.max(pad, Math.min(myPos.x + myVel.x, canvasRect.width  - pad));
-            myPos.y = Math.max(pad, Math.min(myPos.y + myVel.y, canvasRect.height - pad));
+            const maxW = (canvasRect && canvasRect.width > pad * 2) ? (canvasRect.width - pad) : 800;
+            const maxH = (canvasRect && canvasRect.height > pad * 2) ? (canvasRect.height - pad) : 600;
+
+            myPos.x = Math.max(pad, Math.min(myPos.x + myVel.x, maxW));
+            myPos.y = Math.max(pad, Math.min(myPos.y + myVel.y, maxH));
 
             myIsMoving = Math.abs(myVel.x) > 0.1 || Math.abs(myVel.y) > 0.1;
 
@@ -3275,18 +3326,18 @@
     // Init Lucide icons and entry behavior
     refreshIcons();
     updateLobbyActionCopy();
-    viewerLoginLink.addEventListener('click', preserveClassroomRedirect);
+    if (viewerLoginLink) viewerLoginLink.addEventListener('click', preserveClassroomRedirect);
     const preferredName = getPreferredDisplayName();
-    if (preferredName) lobbyDisplayName.value = preferredName;
+    if (preferredName && lobbyDisplayName) lobbyDisplayName.value = preferredName;
 
     const initialRoom = sanitizeRoomId(searchParams.get('room') || '');
-    if (initialRoom) lobbyRoomId.value = initialRoom;
+    if (initialRoom && lobbyRoomId) lobbyRoomId.value = initialRoom;
 
     const shouldAutoJoin = searchParams.get('autojoin') === '1';
     if (shouldAutoJoin && btnJoin) {
-        if (!lobbyRoomId.value) lobbyRoomId.value = 'lobby';
+        if (lobbyRoomId && !lobbyRoomId.value) lobbyRoomId.value = 'lobby';
         joinClassroom();
-    } else {
+    } else if (lobbyDisplayName) {
         lobbyDisplayName.focus();
     }
 })();
