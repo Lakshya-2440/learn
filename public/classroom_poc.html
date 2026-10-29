@@ -204,6 +204,29 @@
         html:not(.dark) .vc-theme #participantsSidebar .text-gray-500 {
             color: #d1d5db !important;
         }
+
+        /* Ensure Bottom Instructions Hint Bar always has bright white text */
+        #classroomControlsHint,
+        .vc-theme #classroomControlsHint,
+        html:not(.dark) .vc-theme #classroomControlsHint {
+            background-color: #1c1d1f !important;
+            border-color: #3c4043 !important;
+            color: #ffffff !important;
+        }
+
+        #classroomControlsHint span,
+        .vc-theme #classroomControlsHint span,
+        html:not(.dark) .vc-theme #classroomControlsHint span {
+            color: #ffffff !important;
+        }
+
+        #classroomControlsHint kbd,
+        .vc-theme #classroomControlsHint kbd,
+        html:not(.dark) .vc-theme #classroomControlsHint kbd {
+            background-color: #2b2c2f !important;
+            border-color: #525357 !important;
+            color: #ffffff !important;
+        }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #14b8a6; border-radius: 999px; }
@@ -461,18 +484,18 @@
                 <!-- Controls Row (Instructions on Left, Controls centered) -->
                 <div class="relative w-full flex items-center justify-center">
                     <!-- Bottom Keyboard Controls & Desk Interaction Hint (Positioned to the left of controls bar) -->
-                    <div id="classroomControlsHint" class="hidden md:flex absolute left-2 lg:left-6 items-center gap-2 sm:gap-3 text-xs text-gray-300 py-2 px-3.5 bg-[#1c1d1f]/95 border border-[#3c4043] rounded-full shadow-xl backdrop-blur-md select-none z-20">
+                    <div id="classroomControlsHint" class="hidden md:flex absolute left-2 lg:left-6 items-center gap-2 sm:gap-3 text-xs text-white py-2 px-3.5 bg-[#1c1d1f] border border-[#3c4043] rounded-full shadow-xl backdrop-blur-md select-none z-20" style="color: #ffffff !important; background-color: #1c1d1f !important;">
                         <div class="flex items-center gap-1.5">
-                            <span class="text-gray-400 font-medium">Move:</span>
-                            <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">↑</kbd>
-                            <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">↓</kbd>
-                            <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">←</kbd>
-                            <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">→</kbd>
+                            <span class="text-white font-semibold" style="color: #ffffff !important;">Move:</span>
+                            <kbd class="px-1.5 py-0.5 bg-[#2b2c2f] rounded text-[10px] font-mono border border-gray-600 text-white font-bold" style="color: #ffffff !important; background-color: #2b2c2f !important; border-color: #525357 !important;">↑</kbd>
+                            <kbd class="px-1.5 py-0.5 bg-[#2b2c2f] rounded text-[10px] font-mono border border-gray-600 text-white font-bold" style="color: #ffffff !important; background-color: #2b2c2f !important; border-color: #525357 !important;">↓</kbd>
+                            <kbd class="px-1.5 py-0.5 bg-[#2b2c2f] rounded text-[10px] font-mono border border-gray-600 text-white font-bold" style="color: #ffffff !important; background-color: #2b2c2f !important; border-color: #525357 !important;">←</kbd>
+                            <kbd class="px-1.5 py-0.5 bg-[#2b2c2f] rounded text-[10px] font-mono border border-gray-600 text-white font-bold" style="color: #ffffff !important; background-color: #2b2c2f !important; border-color: #525357 !important;">→</kbd>
                         </div>
-                        <span class="text-gray-600 hidden sm:inline">•</span>
+                        <span class="text-gray-300 hidden sm:inline" style="color: #d1d5db !important;">•</span>
                         <div class="flex items-center gap-1.5">
-                            <span class="text-gray-400 font-medium">Sit / Stand:</span>
-                            <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200 font-bold">E</kbd>
+                            <span class="text-white font-semibold" style="color: #ffffff !important;">Sit / Stand:</span>
+                            <kbd class="px-1.5 py-0.5 bg-[#2b2c2f] rounded text-[10px] font-mono border border-gray-600 text-white font-bold" style="color: #ffffff !important; background-color: #2b2c2f !important; border-color: #525357 !important;">E</kbd>
                         </div>
                     </div>
 
