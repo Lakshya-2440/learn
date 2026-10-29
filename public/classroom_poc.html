@@ -422,6 +422,22 @@
                     <button type="button" class="btn-emoji-reaction w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition hover:scale-125" data-emoji="👎" title="Thumbs Down">👎</button>
                 </div>
 
+                <!-- Bottom Keyboard Controls & Desk Interaction Hint -->
+                <div id="classroomControlsHint" class="flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs text-gray-300 py-1.5 px-4 mb-2 bg-[#1c1d1f]/95 border border-[#3c4043] rounded-full shadow-lg backdrop-blur-md mx-auto w-fit select-none">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-gray-400 font-medium">Move:</span>
+                        <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">↑</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">↓</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">←</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200">→</kbd>
+                    </div>
+                    <span class="text-gray-600 hidden sm:inline">•</span>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-gray-400 font-medium">Sit / Stand:</span>
+                        <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-[10px] font-mono border border-gray-700 text-gray-200 font-bold">E</kbd>
+                    </div>
+                </div>
+
                 <!-- Google Meet Control Bar (Screenshot 1) -->
                 <div id="meetControlBar" class="flex items-center justify-center gap-2 sm:gap-3 px-4 py-2 bg-[#1c1d1f] border border-gray-800 rounded-2xl sm:rounded-full shadow-2xl mx-auto w-fit">
                     <!-- Audio Split Pill -->
@@ -516,17 +532,22 @@
 </div>
 
 <!-- PARTICIPANT SIDEBAR -->
-<div id="participantsSidebar" aria-label="Active participants" class="fixed inset-y-0 right-0 w-80 bg-gray-900 border-l border-gray-800 shadow-2xl z-[60] transform translate-x-full transition-transform duration-300">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <h2 class="text-sm font-semibold flex items-center gap-2">
-            <i data-lucide="users" class="w-4 h-4 text-teal-400"></i>
-            Active Participants
-        </h2>
-        <button id="btnCloseParticipants" type="button" aria-label="Close active participants panel" class="p-1 hover:bg-gray-800 rounded-lg transition">
-            <i data-lucide="x" class="w-4 h-4 text-gray-400"></i>
+<div id="participantsSidebar" aria-label="Active participants" class="fixed inset-y-0 right-0 w-80 sm:w-88 bg-gray-900/95 backdrop-blur-xl border-l border-gray-800 shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3.5 border-b border-gray-800 shrink-0">
+        <div class="flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold">
+                <i data-lucide="users" class="w-4 h-4"></i>
+            </div>
+            <div>
+                <h2 class="text-sm font-bold text-gray-100 tracking-wide">Participants</h2>
+                <p id="sidebarParticipantSummary" class="text-[11px] text-gray-400">0 in classroom</p>
+            </div>
+        </div>
+        <button id="btnCloseParticipants" type="button" aria-label="Close active participants panel" class="p-1 hover:bg-gray-800 rounded-lg transition text-gray-400 hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
         </button>
     </div>
-    <div id="participantsList" class="p-3 space-y-2 overflow-y-auto" style="max-height:calc(100vh - 56px);">
+    <div id="participantsList" class="flex-1 p-3.5 space-y-3 overflow-y-auto">
     </div>
 </div>
 
@@ -665,6 +686,17 @@
     const participants = {};
     // user_id -> { x, y, emoji, hand_raised, display_name }
     const presenceByUser = {};
+    function getPresence(id) {
+        if (!id) return null;
+        const s = String(id);
+        return presenceByUser[s] || presenceByUser[id] || null;
+    }
+    function setPresence(id, data) {
+        if (!id) return;
+        const s = String(id);
+        presenceByUser[s] = { ...(presenceByUser[s] || presenceByUser[id] || {}), ...data };
+        presenceByUser[id] = presenceByUser[s];
+    }
     let pendingSelfPresenceReplay = false;
     // seat_id -> { name, pid }
     const seatOccupants = {};
@@ -785,6 +817,7 @@
                                 <span data-seat-cam="${seatId}"></span>
                             </div>
                         </div>
+                        <div data-seat-hand="${seatId}" class="hidden absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs shadow-lg border border-amber-200 z-20 animate-bounce pointer-events-none" title="Hand raised">✋</div>
                         <div data-seat-label="${seatId}" class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] md:text-xs text-white bg-gray-900/95 border border-white/20 px-2.5 py-0.5 rounded-md font-medium whitespace-nowrap shadow-lg hidden z-10 pointer-events-none"></div>
                     </div>
                     <div data-seat-chair="${seatId}" class="w-[82%] min-h-[18px] md:min-h-[22px] mt-1 px-1.5 py-0.5 rounded bg-[#182033] border border-[#232d4b] shadow-inner flex items-center justify-center text-[10px] md:text-xs font-semibold text-slate-400/50 truncate select-none transition-all" title="Empty Seat"></div>
@@ -1411,6 +1444,10 @@
                 videoEl.srcObject = null;
                 videoEl.classList.add('hidden');
             }
+            const handEl = document.querySelector(`[data-seat-hand="${seatId}"]`);
+            if (handEl) handEl.classList.add('hidden');
+            const deskBox = document.querySelector(`[data-desk-box="${seatId}"]`);
+            if (deskBox) deskBox.classList.remove('ring-2', 'ring-amber-400');
             return;
         }
 
@@ -1472,6 +1509,16 @@
                 avatarEl.style.background = `linear-gradient(135deg, ${c1}, ${c2})`;
                 avatarEl.textContent = (occupant.name || '?').charAt(0).toUpperCase();
             }
+        }
+
+        const handEl = document.querySelector(`[data-seat-hand="${seatId}"]`);
+        const deskBox = document.querySelector(`[data-desk-box="${seatId}"]`);
+        const occPresence = occupant ? getPresence(occupant.pid) : null;
+        const isHandRaised = Boolean(occPresence && occPresence.hand_raised === true);
+        if (handEl) handEl.classList.toggle('hidden', !isHandRaised);
+        if (deskBox) {
+            deskBox.classList.toggle('ring-2', isHandRaised);
+            deskBox.classList.toggle('ring-amber-400', isHandRaised);
         }
     }
 
@@ -2024,6 +2071,21 @@
         });
     });
 
+    function toggleParticipantsSidebar(forceOpen) {
+        if (!participantsSidebar) return;
+        const isCurrentlyClosed = participantsSidebar.classList.contains('translate-x-full');
+        const shouldOpen = (typeof forceOpen === 'boolean') ? forceOpen : isCurrentlyClosed;
+        if (shouldOpen) {
+            participantsSidebar.classList.remove('translate-x-full');
+            renderParticipantsList();
+        } else {
+            participantsSidebar.classList.add('translate-x-full');
+        }
+        if (btnParticipants) {
+            btnParticipants.setAttribute('aria-expanded', String(shouldOpen));
+        }
+    }
+
     document.addEventListener('click', (e) => {
         if (deviceMenuTray && !deviceMenuTray.contains(e.target) && e.target !== btnMicOptions && e.target !== btnCamOptions) {
             deviceMenuTray.classList.add('hidden');
@@ -2031,16 +2093,19 @@
         if (reactionsTray && !reactionsTray.contains(e.target) && e.target !== btnReactions) {
             reactionsTray.classList.add('hidden');
         }
+        if (participantsSidebar && !participantsSidebar.classList.contains('translate-x-full')) {
+            if (!participantsSidebar.contains(e.target) &&
+                (!btnParticipants || !btnParticipants.contains(e.target)) &&
+                (!btnMoreOptions || !btnMoreOptions.contains(e.target))) {
+                toggleParticipantsSidebar(false);
+            }
+        }
     });
 
     if (btnMoreOptions) {
-        btnMoreOptions.addEventListener('click', () => {
-            if (btnParticipants) {
-                btnParticipants.click();
-            } else if (participantsSidebar) {
-                participantsSidebar.classList.toggle('translate-x-full');
-                renderParticipantsList();
-            }
+        btnMoreOptions.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleParticipantsSidebar();
         });
     }
 
@@ -2126,9 +2191,10 @@
     }
 
     function loginForInteraction() {
-        preserveClassroomRedirect();
-        showToast('Please sign in to interact with the virtual classroom.', 'warning');
-        setTimeout(() => { window.location.href = '/login'; }, 700);
+        setInteractionMode(true);
+        if (!isSeated) myCharacter.style.display = '';
+        startGameLoop();
+        showToast('Interaction enabled', 'success');
     }
 
     function applyDisabledStyle(button, disabled) {
@@ -2141,7 +2207,7 @@
 
     function setInteractionMode(allowed) {
         canInteract = Boolean(allowed);
-        viewerBanner.classList.toggle('hidden', canInteract);
+        if (viewerBanner) viewerBanner.classList.toggle('hidden', canInteract);
         if (!canInteract) {
             if (animFrameId) {
                 cancelAnimationFrame(animFrameId);
@@ -2152,6 +2218,9 @@
             myVel.y = 0;
             myIsMoving = false;
             myCharacter.style.display = 'none';
+        } else {
+            if (!isSeated) myCharacter.style.display = '';
+            startGameLoop();
         }
         chatInput.disabled = !canInteract;
         chatInput.placeholder = canInteract ? 'Type a message…' : 'Sign in to chat';
@@ -2172,19 +2241,20 @@
 
     function updateLobbyActionCopy() {
         if (!btnJoinLabel) return;
-        btnJoinLabel.textContent = isAuthenticated() ? 'Join Classroom' : 'View Classroom';
+        btnJoinLabel.textContent = 'Join Classroom';
     }
 
     // Join / Leave
     function joinClassroom() {
         const authenticated = Boolean(isAuthenticated());
-        setInteractionMode(authenticated);
+        setInteractionMode(true);
         intentionalDisconnect = false;
         reconnectAttempts = 0;
         isSeated = false;
         currentSeat = null;
         roomId = sanitizeRoomId(lobbyRoomId.value) || 'demo-room';
-        myDisplayName = sanitizeDisplayName(lobbyDisplayName.value) || (authenticated ? `User-${Math.random().toString(36).slice(2,6)}` : 'Viewer');
+        const rawName = sanitizeDisplayName(lobbyDisplayName.value);
+        myDisplayName = rawName || (authenticated ? (getAuth().user?.username || 'User') : `Student-${Math.random().toString(36).slice(2,6)}`);
         lobbyRoomId.value = roomId;
         lobbyDisplayName.value = myDisplayName;
         myParticipantId = resolveParticipantId();
@@ -2199,11 +2269,9 @@
         classroomScreen.classList.add('flex');
 
         renderDesks();
-        if (canInteract) {
-            ensureLocalMedia();
-        }
+        ensureLocalMedia();
         connectWS();
-        if (canInteract) startGameLoop();
+        startGameLoop();
         updatePresenceControls();
         updateMediaControlUI();
         refreshIcons();
@@ -2437,29 +2505,31 @@
             case 'user_info':
                 mySessionId     = data.session_id;
                 myParticipantId = data.participant_id;
-                myDisplayName   = data.display_name;
-                setInteractionMode(data.can_interact !== false && Boolean(isAuthenticated()));
-                if (!canInteract) {
-                    myCharacter.style.display = 'none';
-                    renderParticipantsList();
-                    break;
-                }
-                if (!presenceByUser[myParticipantId]) {
-                    presenceByUser[myParticipantId] = {
-                        x: 0.5, y: 0.5, emoji: '', hand_raised: false, display_name: myDisplayName,
-                    };
-                }
-                myInitial.textContent  = myDisplayName.charAt(0).toUpperCase();
+                if (data.display_name) myDisplayName = data.display_name;
+                setInteractionMode(data.can_interact !== false);
+                const strMyId = String(myParticipantId);
+                const curPres = getPresence(strMyId) || {};
+                setPresence(strMyId, {
+                    x: 0.5, y: 0.5, emoji: '', hand_raised: false, display_name: myDisplayName, ...curPres
+                });
+                myInitial.textContent  = (myDisplayName || 'U').charAt(0).toUpperCase();
                 myNameLabel.textContent = myDisplayName;
                 updatePresenceControls();
 
                 // Place the local character at the centre of the canvas (in px).
-                myCharacter.style.display = '';
-                myPos.x = classroomCanvas.getBoundingClientRect().width  * 0.5;
-                myPos.y = classroomCanvas.getBoundingClientRect().height * 0.5;
+                if (!isSeated) {
+                    myCharacter.style.display = '';
+                }
+                const canvasBox = classroomCanvas.getBoundingClientRect();
+                if (canvasBox.width > 0 && canvasBox.height > 0) {
+                    myPos.x = canvasBox.width  * 0.5;
+                    myPos.y = canvasBox.height * 0.5;
+                }
                 myCharacter.style.left = myPos.x + 'px';
                 myCharacter.style.top  = myPos.y + 'px';
+                startGameLoop();
                 syncMeshConnections();
+                renderParticipantsList();
                 break;
 
             case 'room_state':
@@ -2659,14 +2729,15 @@
             }
 
             case 'hand_raised': {
-                const pid = data.participant_id;
+                const pid = String(data.participant_id);
                 const isRaised = data.hand_raised === true;
-                if (!presenceByUser[pid]) {
-                    presenceByUser[pid] = { x: 0.5, y: 0.5, emoji: '', hand_raised: isRaised, display_name: data.display_name };
-                } else {
-                    presenceByUser[pid].hand_raised = isRaised;
-                }
-                if (pid !== myParticipantId) {
+                const existing = getPresence(pid) || { x: 0.5, y: 0.5, emoji: '' };
+                setPresence(pid, {
+                    ...existing,
+                    hand_raised: isRaised,
+                    display_name: data.display_name || existing.display_name
+                });
+                if (pid !== String(myParticipantId)) {
                     if (isRaised) {
                         spawnFloatingEmoji('✋');
                         showToast(`${data.display_name || 'Participant'} raised their hand ✋`, 'info');
@@ -2695,21 +2766,21 @@
         });
 
         (data.participants || []).forEach(p => {
+            const pid = String(p.participant_id);
             const ms = p.media_state || {};
-            participantMediaState[p.participant_id] = {
+            participantMediaState[pid] = {
                 mic_enabled: Boolean(ms.mic_enabled !== undefined ? ms.mic_enabled : ms.audio),
                 cam_enabled: Boolean(ms.cam_enabled !== undefined ? ms.cam_enabled : ms.video),
             };
             if (p.hand_raised !== undefined) {
-                if (!presenceByUser[p.participant_id]) {
-                    presenceByUser[p.participant_id] = {
-                        x: 0.5, y: 0.5, emoji: '', hand_raised: p.hand_raised === true, display_name: p.display_name
-                    };
-                } else {
-                    presenceByUser[p.participant_id].hand_raised = (p.hand_raised === true);
-                }
+                const cur = getPresence(pid) || { x: 0.5, y: 0.5, emoji: '' };
+                setPresence(pid, {
+                    ...cur,
+                    hand_raised: p.hand_raised === true,
+                    display_name: p.display_name || cur.display_name
+                });
             }
-            if (p.participant_id === myParticipantId) return;
+            if (pid === String(myParticipantId)) return;
 
             // Incoming positions may be:
             //   (a) normalized 0–1  ← new format
@@ -2725,29 +2796,29 @@
                 };
             }
 
-            participants[p.participant_id] = {
+            participants[pid] = {
                 display_name: p.display_name,
                 normPos,
                 direction:    p.direction  || 'down',
                 is_moving:    p.is_moving  || false,
                 seat_id:      p.seat_id    || '',
             };
-            if (p.seat_id) updateSeatLabel(p.seat_id, p.display_name, p.participant_id);
+            if (p.seat_id) updateSeatLabel(p.seat_id, p.display_name, pid);
         });
 
         // Restore own seat if server knows about it
-        const selfP = canInteract ? (data.participants || []).find(p => p.participant_id === myParticipantId) : null;
+        const selfP = (data.participants || []).find(p => String(p.participant_id) === String(myParticipantId));
         if (selfP && selfP.seat_id) {
             updateSeatLabel(selfP.seat_id, myDisplayName, myParticipantId);
             isSeated = true;
             currentSeat = selfP.seat_id;
             myCharacter.style.display = 'none';
-        } else if (!canInteract) {
+        } else {
             isSeated = false;
             currentSeat = null;
-            myCharacter.style.display = 'none';
-        } else {
-            myCharacter.style.display = '';
+            if (canInteract) {
+                myCharacter.style.display = '';
+            }
         }
 
         if (data.screen_sharer) {
@@ -2813,44 +2884,130 @@
         });
     }
 
-    // Participants list sidebar
+    // Participants list sidebar / table
     function renderParticipantsList() {
+        if (!participantsList) return;
         participantsList.innerHTML = '';
+
+        // Gather all participant entries
+        const allList = [];
         if (canInteract) {
-            participantsList.appendChild(makeParticipantCard(myParticipantId, myDisplayName, currentSeat, true));
-        } else {
-            const viewerCard = document.createElement('div');
-            viewerCard.className = 'p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-100';
-            viewerCard.textContent = 'Viewing only. Sign in to appear in the room and interact.';
-            participantsList.appendChild(viewerCard);
+            const strMyId = String(myParticipantId || 'me');
+            const selfPresence = getPresence(strMyId) || {};
+            allList.push({
+                pid: myParticipantId,
+                name: myDisplayName,
+                seatId: currentSeat,
+                isSelf: true,
+                handRaised: selfPresence.hand_raised === true,
+                mediaState: localMediaState
+            });
         }
         Object.entries(participants).forEach(([pid, p]) => {
-            participantsList.appendChild(makeParticipantCard(pid, p.display_name, p.seat_id, false));
+            if (String(pid) === String(myParticipantId)) return;
+            const pPresence = getPresence(pid) || {};
+            allList.push({
+                pid: pid,
+                name: p.display_name,
+                seatId: p.seat_id,
+                isSelf: false,
+                handRaised: pPresence.hand_raised === true,
+                mediaState: participantMediaState[pid] || { mic_enabled: false, cam_enabled: false }
+            });
         });
+
+        const raisedList = allList.filter(item => item.handRaised);
+
+        const summaryEl = document.getElementById('sidebarParticipantSummary');
+        if (summaryEl) summaryEl.textContent = `${allList.length} in classroom`;
+
+        // 1. Raised Hands Section (Prominent Table Card)
+        if (raisedList.length > 0) {
+            const raisedSection = document.createElement('div');
+            raisedSection.className = 'mb-3.5 p-3 bg-amber-500/10 border border-amber-500/40 rounded-xl shadow-lg';
+            raisedSection.innerHTML = `
+                <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-amber-500/20">
+                    <span class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <span class="text-base animate-bounce">✋</span> Raised Hands (${raisedList.length})
+                    </span>
+                    <span class="text-[10px] text-amber-200/70 font-medium">Needs Attention</span>
+                </div>
+                <div class="space-y-1.5"></div>
+            `;
+            const container = raisedSection.querySelector('div.space-y-1\\.5');
+            raisedList.forEach(item => {
+                container.appendChild(makeParticipantRow(item, true));
+            });
+            participantsList.appendChild(raisedSection);
+        }
+
+        // 2. All Participants Table Section
+        const allSection = document.createElement('div');
+        allSection.innerHTML = `
+            <div class="flex items-center justify-between px-1 mb-2">
+                <span class="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                    All Participants (${allList.length})
+                </span>
+            </div>
+            <div class="space-y-1.5"></div>
+        `;
+        const allContainer = allSection.querySelector('div.space-y-1\\.5');
+        allList.forEach(item => {
+            allContainer.appendChild(makeParticipantRow(item, false));
+        });
+        participantsList.appendChild(allSection);
     }
 
-    function makeParticipantCard(pid, name, seatId, isSelf) {
-        const [c1, c2] = isSelf ? ['#0D9488', '#14b8a6'] : colorForId(pid);
+    function makeParticipantRow(item, isRaisedOnlySection) {
+        const [c1, c2] = item.isSelf ? ['#0D9488', '#14b8a6'] : colorForId(item.pid);
         const card = document.createElement('div');
-        card.className = 'flex items-center gap-3 p-2.5 bg-gray-800/60 rounded-lg border border-gray-700/40';
+        card.className = `flex items-center gap-2.5 p-2 rounded-lg border transition-all ${
+            item.handRaised
+                ? 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400 shadow-sm'
+                : 'bg-gray-800/60 border-gray-700/40 hover:border-gray-600'
+        }`;
+
+        const micActive = item.mediaState?.mic_enabled === true;
+        const camActive = item.mediaState?.cam_enabled === true;
+        const locationLabel = item.seatId ? item.seatId.replace('seat-', 'Desk ') : 'Walking on floor';
+
         card.innerHTML = `
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                 style="background: linear-gradient(135deg, ${c1}, ${c2});">
-                ${(name || '?').charAt(0).toUpperCase()}
+            <div class="relative shrink-0">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow"
+                     style="background: linear-gradient(135deg, ${c1}, ${c2});">
+                    ${(item.name || '?').charAt(0).toUpperCase()}
+                </div>
+                ${item.handRaised ? '<span class="absolute -top-1 -right-1 text-[11px] leading-none animate-bounce">✋</span>' : ''}
             </div>
             <div class="min-w-0 flex-1">
-                <p class="text-xs font-medium text-gray-200 truncate">${escapeHtml(name)}${isSelf ? ' <span class="text-teal-400">(You)</span>' : ''}</p>
-                <p class="text-[10px] text-gray-500">${seatId ? 'Seat ' + escapeHtml(seatId) : 'Walking around'}</p>
-                <p class="text-[11px] text-gray-300 mt-0.5">${presenceBadge(pid)}</p>
+                <div class="flex items-center gap-1.5">
+                    <p class="text-xs font-semibold text-gray-100 truncate">${escapeHtml(item.name)}${item.isSelf ? ' <span class="text-teal-400 font-normal">(You)</span>' : ''}</p>
+                    ${item.handRaised ? '<span class="px-1.5 py-0.2 bg-amber-500/25 border border-amber-400/50 text-amber-300 text-[9px] font-bold rounded-full whitespace-nowrap">✋ Raised</span>' : ''}
+                </div>
+                <p class="text-[10px] text-gray-400 flex items-center gap-1 mt-0.5">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full ${item.seatId ? 'bg-blue-400' : 'bg-emerald-400'}"></span>
+                    <span>${escapeHtml(locationLabel)}</span>
+                </p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0 text-gray-400">
+                <span class="p-1 rounded ${micActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}" title="${micActive ? 'Microphone on' : 'Microphone muted'}">
+                    ${micActive
+                        ? '<svg class="w-3 h-3 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+                        : '<svg class="w-3 h-3 fill-none stroke-current stroke-2" viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'}
+                </span>
+                <span class="p-1 rounded ${camActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}" title="${camActive ? 'Camera on' : 'Camera off'}">
+                    ${camActive
+                        ? '<svg class="w-3 h-3 fill-currentColor" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><polygon points="15.5,10 21.5,6.5 21.5,17.5 15.5,14" fill="currentColor"/></svg>'
+                        : '<svg class="w-3 h-3 stroke-current stroke-2" viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none"/></svg>'}
+                </span>
             </div>
         `;
         return card;
     }
 
     function presenceBadge(userId) {
-        const p = presenceByUser[userId];
+        const p = getPresence(userId);
         if (!p) return '';
-        // Returned string is safe for innerHTML interpolation (emoji is escaped).
         let badge = '';
         if (p.emoji) badge += escapeHtml(p.emoji) + ' ';
         if (p.hand_raised) badge += '✋';
@@ -2858,7 +3015,8 @@
     }
 
     function updatePresenceControls() {
-        const self = presenceByUser[myParticipantId] || { emoji: '', hand_raised: false };
+        const strMyId = String(myParticipantId || 'me');
+        const self = getPresence(strMyId) || { emoji: '', hand_raised: false };
         if (btnThumbsUp) {
             btnThumbsUp.classList.toggle('bg-teal-700', self.emoji === '👍');
             btnThumbsUp.classList.toggle('border-teal-500', self.emoji === '👍');
@@ -2866,29 +3024,32 @@
         if (btnRaiseHand) {
             const isRaised = (self.hand_raised === true);
             if (isRaised) {
-                btnRaiseHand.classList.add('bg-blue-600', 'text-white', 'border-blue-400', 'shadow-lg', 'shadow-blue-500/30');
+                btnRaiseHand.classList.add('bg-blue-600', 'text-white', 'border-blue-400', 'shadow-lg', 'shadow-blue-500/50', 'ring-2', 'ring-blue-400');
                 btnRaiseHand.classList.remove('bg-[#2b2c2f]');
             } else {
-                btnRaiseHand.classList.remove('bg-blue-600', 'border-blue-400', 'shadow-lg', 'shadow-blue-500/30');
+                btnRaiseHand.classList.remove('bg-blue-600', 'border-blue-400', 'shadow-lg', 'shadow-blue-500/50', 'ring-2', 'ring-blue-400');
                 btnRaiseHand.classList.add('bg-[#2b2c2f]');
             }
         }
-        if (myPresenceBadge) myPresenceBadge.textContent = presenceBadge(myParticipantId);
+        if (myPresenceBadge) {
+            myPresenceBadge.textContent = self.hand_raised ? '✋' : (self.emoji || '');
+        }
         renderSeatLabels();
     }
 
     btnThumbsUp.addEventListener('click', () => {
-        if (!canInteract) { loginForInteraction(); return; }
-        const current = presenceByUser[myParticipantId] || {};
+        if (!canInteract) setInteractionMode(true);
+        const strMyId = String(myParticipantId || 'me');
+        const current = getPresence(strMyId) || {};
         const nextEmoji = current.emoji === '👍' ? '' : '👍';
         pendingSelfPresenceReplay = true;
-        presenceByUser[myParticipantId] = {
+        setPresence(strMyId, {
             x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
             y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
             emoji: nextEmoji,
             hand_raised: current.hand_raised === true,
             display_name: current.display_name || myDisplayName,
-        };
+        });
         renderOtherAvatars();
         renderParticipantsList();
         renderSeatLabels();
@@ -2897,17 +3058,18 @@
     });
 
     btnRaiseHand.addEventListener('click', () => {
-        if (!canInteract) { loginForInteraction(); return; }
-        const current = presenceByUser[myParticipantId] || {};
+        if (!canInteract) setInteractionMode(true);
+        const strMyId = String(myParticipantId || 'me');
+        const current = getPresence(strMyId) || {};
         const nextHandRaised = current.hand_raised !== true;
         pendingSelfPresenceReplay = true;
-        presenceByUser[myParticipantId] = {
+        setPresence(strMyId, {
             x: Number.isFinite(Number(current.x)) ? Number(current.x) : 0.5,
             y: Number.isFinite(Number(current.y)) ? Number(current.y) : 0.5,
             emoji: typeof current.emoji === 'string' ? current.emoji : '',
             hand_raised: nextHandRaised,
             display_name: current.display_name || myDisplayName,
-        };
+        });
         if (nextHandRaised) {
             spawnFloatingEmoji('✋');
             showToast('You raised your hand ✋', 'info');
@@ -2951,18 +3113,18 @@
     }
 
     // Participants sidebar toggle
-    btnParticipants.addEventListener('click', () => {
-        participantsSidebar.classList.toggle('translate-x-full');
-        btnParticipants.setAttribute(
-            'aria-expanded',
-            String(!participantsSidebar.classList.contains('translate-x-full'))
-        );
-        renderParticipantsList();
-    });
-    btnCloseParticipants.addEventListener('click', () => {
-        participantsSidebar.classList.add('translate-x-full');
-        btnParticipants.setAttribute('aria-expanded', 'false');
-    });
+    if (btnParticipants) {
+        btnParticipants.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleParticipantsSidebar();
+        });
+    }
+    if (btnCloseParticipants) {
+        btnCloseParticipants.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleParticipantsSidebar(false);
+        });
+    }
 
     // Movement / Game Loop
     // myPos is always in LOCAL pixel coords (used for rendering the local avatar).
@@ -2981,28 +3143,45 @@
 
     window.addEventListener('keydown', (e) => {
         if (isTypingInInput(e.target)) return;
-        if (!canInteract) {
-            if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
-            if (e.key.toLowerCase() === 'e') { e.preventDefault(); loginForInteraction(); }
-            return;
+        const key = e.key.toLowerCase();
+        if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(key)) {
+            if (!isSeated) {
+                if (key === 'arrowup' || key === 'w') keysPressed.ArrowUp = true;
+                if (key === 'arrowdown' || key === 's') keysPressed.ArrowDown = true;
+                if (key === 'arrowleft' || key === 'a') keysPressed.ArrowLeft = true;
+                if (key === 'arrowright' || key === 'd') keysPressed.ArrowRight = true;
+                e.preventDefault();
+            }
         }
-        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-            if (!isSeated) { keysPressed[e.key] = true; e.preventDefault(); }
+        if (key === 'e') {
+            e.preventDefault();
+            handleSeatInteraction();
         }
-        if (e.key.toLowerCase() === 'e') handleSeatInteraction();
     });
+
     window.addEventListener('keyup', (e) => {
         if (isTypingInInput(e.target)) return;
-        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-            keysPressed[e.key] = false;
+        const key = e.key.toLowerCase();
+        if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(key)) {
+            if (key === 'arrowup' || key === 'w') keysPressed.ArrowUp = false;
+            if (key === 'arrowdown' || key === 's') keysPressed.ArrowDown = false;
+            if (key === 'arrowleft' || key === 'a') keysPressed.ArrowLeft = false;
+            if (key === 'arrowright' || key === 'd') keysPressed.ArrowRight = false;
             e.preventDefault();
         }
     });
 
     function handleSeatInteraction() {
-        if (!canInteract) { loginForInteraction(); return; }
+        if (!canInteract) {
+            setInteractionMode(true);
+        }
         if (isSeated) {
-            wsSend({ type: 'leave_seat', seat_id: currentSeat });
+            const seatToLeave = currentSeat;
+            isSeated = false;
+            currentSeat = null;
+            myCharacter.style.display = '';
+            wsSend({ type: 'leave_seat', seat_id: seatToLeave });
+            showToast('You stood up', 'info');
             return;
         }
         const canvasRect = classroomCanvas.getBoundingClientRect();
@@ -3017,13 +3196,16 @@
             const dist = Math.hypot(myPos.x - cx, myPos.y - cy);
             if (dist < nearestDist) { nearestDist = dist; nearest = seatId; }
         });
-        if (nearest && nearestDist < 95) {
+        if (nearest && nearestDist < 140) {
             wsSend({ type: 'update_seat', seat_id: nearest });
+            showToast(`Taking ${nearest.replace('seat-', 'Desk ')}…`, 'info');
+        } else {
+            showToast('Move closer to a desk and press E to sit', 'info');
         }
     }
 
     function startGameLoop() {
-        if (!canInteract) return;
+        if (animFrameId) return;
         function tick() {
             const accel    = 0.8;
             const friction = 0.85;

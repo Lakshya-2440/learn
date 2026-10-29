@@ -6596,7 +6596,8 @@ class ClassroomDO(DurableObject):
         display_name_param = (qs.get("display_name") or [None])[0]
 
         authenticated_user = verify_token(token_param or "", self.env.JWT_SECRET) if token_param else None
-        can_interact = authenticated_user is not None
+        is_explicit_viewer = (qs.get("viewer") or ["0"])[0] == "1" or (qs.get("read_only") or ["0"])[0] == "1"
+        can_interact = (authenticated_user is not None) or (bool(participant_param) and not is_explicit_viewer)
 
         if authenticated_user:
             # Derive identity from the verified token, not from untrusted query params.
@@ -7217,14 +7218,18 @@ class PresenceDO(DurableObject):
         user_param = (qs.get("user_id") or [None])[0]
         display_param = (qs.get("display_name") or [None])[0]
 
+        allow_presence_setting = getattr(self.env, "ALLOW_ANON_PRESENCE", None)
+        if allow_presence_setting is None:
+            allow_presence_setting = getattr(self.env, "ALLOW_ANON_CLASSROOM_POC", "")
+        allow_anonymous = str(allow_presence_setting).lower() in {"1", "true", "yes"}
         authenticated_user = verify_token(token_param or "", self.env.JWT_SECRET) if token_param else None
-        can_interact = authenticated_user is not None
 
         if authenticated_user:
             user_id = str(authenticated_user.get("id", ""))
             display_name = str(authenticated_user.get("username") or user_id)
+            can_interact = True
         else:
-            if token_param or not user_param:
+            if token_param or not allow_anonymous or not user_param:
                 return Response(
                     json.dumps({"error": "Authentication required"}),
                     status=401,
@@ -7232,6 +7237,7 @@ class PresenceDO(DurableObject):
                 )
             user_id = str(user_param)
             display_name = str(display_param or user_id)
+            can_interact = True
 
         user_id = user_id[:64]
         display_name = display_name[:64]
