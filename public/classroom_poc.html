@@ -205,6 +205,16 @@
             color: #d1d5db !important;
         }
 
+        #btnCloseParticipants,
+        #btnCloseParticipants svg,
+        .vc-theme #btnCloseParticipants,
+        .vc-theme #btnCloseParticipants svg,
+        html:not(.dark) .vc-theme #btnCloseParticipants,
+        html:not(.dark) .vc-theme #btnCloseParticipants svg {
+            color: #ffffff !important;
+            stroke: #ffffff !important;
+        }
+
         /* Ensure Bottom Instructions Hint Bar always has bright white text */
         #classroomControlsHint,
         .vc-theme #classroomControlsHint,
@@ -605,8 +615,11 @@
                 <p id="sidebarParticipantSummary" class="text-xs text-gray-300 font-medium" style="color:#d1d5db !important;">0 in classroom</p>
             </div>
         </div>
-        <button id="btnCloseParticipants" type="button" aria-label="Close active participants panel" class="p-1.5 hover:bg-white/10 rounded-lg transition text-gray-300 hover:text-white">
-            <i data-lucide="x" class="w-4 h-4"></i>
+        <button id="btnCloseParticipants" type="button" aria-label="Close active participants panel" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white transition flex items-center justify-center border border-white/20 shadow-sm" title="Close participants" style="color: #ffffff !important;">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #ffffff !important; stroke: #ffffff !important;">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
         </button>
     </div>
     <div id="participantsList" class="flex-1 p-3.5 space-y-3.5 overflow-y-auto">
@@ -2153,13 +2166,6 @@
         }
         if (reactionsTray && !reactionsTray.contains(e.target) && e.target !== btnReactions) {
             reactionsTray.classList.add('hidden');
-        }
-        if (participantsSidebar && !participantsSidebar.classList.contains('translate-x-full')) {
-            if (!participantsSidebar.contains(e.target) &&
-                (!btnParticipants || !btnParticipants.contains(e.target)) &&
-                (!btnMoreOptions || !btnMoreOptions.contains(e.target))) {
-                toggleParticipantsSidebar(false);
-            }
         }
     });
 
