@@ -547,6 +547,7 @@ class TestClassroomDOSignaling:
             "direction": "down",
             "seat_id": "",
             "can_interact": can_interact,
+            "media_state": {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
         }
         ws = _make_ws(attachment=attachment)
         do.sessions[sid] = {
@@ -558,6 +559,7 @@ class TestClassroomDOSignaling:
             "is_moving": False,
             "seat_id": "",
             "can_interact": can_interact,
+            "media_state": {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
         }
         return ws
 
@@ -756,5 +758,25 @@ class TestClassroomDOSignaling:
         )
         assert hand_bob is True
 
+    @pytest.mark.asyncio
+    async def test_default_media_state_muted_and_video_off(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
 
+        do._broadcast_room_state()
 
+        room_state_msg = None
+        for call in ws_bob.send.call_args_list:
+            data = json.loads(call[0][0])
+            if data.get("type") == "room_state":
+                room_state_msg = data
+                break
+
+        assert room_state_msg is not None
+        for participant in room_state_msg.get("participants", []):
+            ms = participant.get("media_state", {})
+            assert ms.get("audio") is False
+            assert ms.get("video") is False
+            assert ms.get("mic_enabled") is False
+            assert ms.get("cam_enabled") is False

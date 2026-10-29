@@ -421,11 +421,14 @@
                         <button id="btnMicOptions" type="button" class="px-2.5 py-2 hover:bg-white/10 text-gray-300 hover:text-white transition flex items-center justify-center border-r border-gray-700/40 text-xs font-bold" title="Microphone options">
                             ···
                         </button>
-                        <button id="btnToggleMic" type="button" class="px-3.5 py-2 hover:bg-white/10 text-white transition flex items-center justify-center" title="Toggle microphone">
+                        <button id="btnToggleMic" type="button" class="px-3.5 py-2 bg-[#ea4335] text-white transition flex items-center justify-center" title="Turn on microphone">
                             <span id="micIcon" class="flex items-center justify-center">
                                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="9" y="3" width="6" height="11" rx="3" fill="none"/>
-                                    <path d="M5 10a7 7 0 0 0 14 0" fill="none"/>
+                                    <line x1="2" y1="2" x2="22" y2="22"/>
+                                    <path d="M9 9v2a3 3 0 0 0 5.12 2.12"/>
+                                    <path d="M15 9.34V6a3 3 0 0 0-5.94-.6"/>
+                                    <path d="M5 10a7 7 0 0 0 10.95 5.84"/>
+                                    <path d="M19 10a7 7 0 0 1-.36 2.22"/>
                                     <line x1="12" y1="17" x2="12" y2="21"/>
                                 </svg>
                             </span>
@@ -437,11 +440,13 @@
                         <button id="btnCamOptions" type="button" class="px-2.5 py-2 hover:bg-white/10 text-gray-300 hover:text-white transition flex items-center justify-center border-r border-gray-700/40 text-[10px] font-bold" title="Camera options">
                             ▲
                         </button>
-                        <button id="btnToggleCam" type="button" class="px-3.5 py-2 hover:bg-white/10 text-white transition flex items-center justify-center" title="Toggle camera">
+                        <button id="btnToggleCam" type="button" class="px-3.5 py-2 bg-[#ea4335] text-white transition flex items-center justify-center" title="Turn on camera">
                             <span id="camIcon" class="flex items-center justify-center">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24">
-                                    <rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="2"/>
-                                    <polygon points="15.5,10 21.5,6.5 21.5,17.5 15.5,14" fill="currentColor"/>
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="2" y1="2" x2="22" y2="22"/>
+                                    <path d="M8.5 5.5H12.5a3 3 0 0 1 3 3v4" fill="none"/>
+                                    <path d="M15.5 15.5v0a3 3 0 0 1-3 3H5.5a3 3 0 0 1-3-3V8.5a3 3 0 0 1 2-2.83" fill="none"/>
+                                    <polygon points="15.5,10 21.5,6.5 21.5,17.5 15.5,14" fill="currentColor" stroke="none"/>
                                 </svg>
                             </span>
                         </button>
@@ -850,7 +855,7 @@
     // ==========================================
     let localStream = null;
     let localMediaPromise = null;
-    const localMediaState = { mic_enabled: true, cam_enabled: true };
+    const localMediaState = { mic_enabled: false, cam_enabled: false };
     const peerConnections = {};
     const pendingCandidates = {};
     const remoteStreams = {};
@@ -964,8 +969,18 @@
                 }
                 drawFallbackFrame();
                 localStream = canvas.captureStream(20);
-                localMediaState.cam_enabled = true;
+                localMediaState.cam_enabled = false;
             } catch (_) {}
+        }
+
+        // By default upon joining: mute microphone and turn video off
+        if (localStream) {
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = false;
+            });
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = false;
+            });
         }
 
         // Attach newly acquired local tracks to any already-created peer connections & renegotiate
@@ -1004,6 +1019,7 @@
         updateMediaControlUI();
         broadcastMediaState();
         updateAllSeatsMediaUI();
+        if (typeof renderMeetFilmstrip === 'function') renderMeetFilmstrip();
     }
 
     function toggleCamera() {
@@ -1017,6 +1033,7 @@
         updateMediaControlUI();
         broadcastMediaState();
         updateAllSeatsMediaUI();
+        if (typeof renderMeetFilmstrip === 'function') renderMeetFilmstrip();
     }
 
     function broadcastMediaState() {
@@ -1070,10 +1087,12 @@
         if (micIcon) micIcon.innerHTML = micOn ? MIC_ON_SVG : MIC_OFF_SVG;
         btnToggleMic.classList.toggle('bg-[#ea4335]', !micOn);
         btnToggleMic.classList.toggle('text-white', true);
+        btnToggleMic.title = micOn ? 'Turn off microphone' : 'Turn on microphone';
 
         if (camIcon) camIcon.innerHTML = camOn ? CAM_ON_SVG : CAM_OFF_SVG;
         btnToggleCam.classList.toggle('bg-[#ea4335]', !camOn);
         btnToggleCam.classList.toggle('text-white', true);
+        btnToggleCam.title = camOn ? 'Turn off camera' : 'Turn on camera';
     }
 
     function getOrCreatePeerConnection(peerId) {
@@ -1354,10 +1373,11 @@
 
     function handleMediaStateUpdate(participantId, mic_enabled, cam_enabled) {
         participantMediaState[participantId] = {
-            mic_enabled: mic_enabled !== false,
-            cam_enabled: cam_enabled !== false
+            mic_enabled: mic_enabled === true,
+            cam_enabled: cam_enabled === true
         };
         updateAllSeatsMediaUI();
+        if (typeof renderMeetFilmstrip === 'function') renderMeetFilmstrip();
     }
 
     function updateSeatMediaUI(seatId) {
@@ -1389,16 +1409,16 @@
         const isLocal = (pid === myParticipantId);
         const mediaState = isLocal
             ? localMediaState
-            : (participantMediaState[pid] || { mic_enabled: true, cam_enabled: true });
+            : (participantMediaState[pid] || { mic_enabled: false, cam_enabled: false });
         const stream = isLocal ? localStream : remoteStreams[pid];
 
         if (micEl) {
-            micEl.innerHTML = mediaState.mic_enabled !== false
+            micEl.innerHTML = (mediaState.mic_enabled === true)
                 ? '<svg class="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
                 : '<svg class="w-2.5 h-2.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
         }
         if (camEl) {
-            camEl.innerHTML = mediaState.cam_enabled !== false
+            camEl.innerHTML = (mediaState.cam_enabled === true)
                 ? '<svg class="w-2.5 h-2.5 text-white" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="2.5"/><polygon points="15.5,10 21.5,6.5 21.5,17.5 15.5,14" fill="currentColor"/></svg>'
                 : '<svg class="w-2.5 h-2.5 text-red-400" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><rect x="2.5" y="5.5" width="13" height="13" rx="3" ry="3" fill="none"/></svg>';
         }
@@ -1406,7 +1426,7 @@
         const videoTracks = stream && stream.getVideoTracks ? stream.getVideoTracks() : [];
         const hasVideo = videoTracks.length > 0 && videoTracks.some(t => t.readyState !== 'ended');
 
-        if (mediaState.cam_enabled !== false && hasVideo) {
+        if (mediaState.cam_enabled === true && hasVideo) {
             if (avatarEl) avatarEl.classList.add('hidden');
             if (videoEl) {
                 videoEl.classList.remove('hidden');
@@ -1826,7 +1846,7 @@
                 name: p.display_name || pid,
                 isLocal: false,
                 stream: remoteStreams[pid],
-                mediaState: participantMediaState[pid] || { mic_enabled: true, cam_enabled: true },
+                mediaState: participantMediaState[pid] || { mic_enabled: false, cam_enabled: false },
                 seatId: p.seat_id
             });
         }
@@ -1836,7 +1856,7 @@
             card.className = 'relative w-full aspect-[16/10] bg-[#1c1d1f] rounded-xl border border-gray-800 shadow-md overflow-hidden flex items-center justify-center shrink-0 group transition-all hover:border-gray-700';
 
             const videoTracks = item.stream && item.stream.getVideoTracks ? item.stream.getVideoTracks() : [];
-            const hasVideo = videoTracks.length > 0 && videoTracks.some(t => t.readyState !== 'ended') && item.mediaState.cam_enabled !== false;
+            const hasVideo = videoTracks.length > 0 && videoTracks.some(t => t.readyState !== 'ended') && item.mediaState.cam_enabled === true;
 
             if (hasVideo) {
                 const vid = document.createElement('video');
@@ -1869,7 +1889,7 @@
 
             const micBadge = document.createElement('span');
             micBadge.className = 'p-0.5 bg-black/70 backdrop-blur rounded text-[9px] flex items-center justify-center';
-            micBadge.innerHTML = item.mediaState.mic_enabled !== false
+            micBadge.innerHTML = (item.mediaState.mic_enabled === true)
                 ? '<svg class="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
                 : '<svg class="w-2.5 h-2.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="2" y1="2" x2="22" y2="22"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
             overlay.appendChild(micBadge);
@@ -2165,6 +2185,7 @@
         connectWS();
         if (canInteract) startGameLoop();
         updatePresenceControls();
+        updateMediaControlUI();
         refreshIcons();
     }
 
@@ -2437,13 +2458,11 @@
                             seat_id: '',
                         };
                     }
-                    if (data.media_state) {
-                        const m = data.media_state;
-                        participantMediaState[data.participant_id] = {
-                            mic_enabled: m.mic_enabled !== undefined ? m.mic_enabled : m.audio,
-                            cam_enabled: m.cam_enabled !== undefined ? m.cam_enabled : m.video,
-                        };
-                    }
+                    const m = data.media_state || {};
+                    participantMediaState[data.participant_id] = {
+                        mic_enabled: Boolean(m.mic_enabled !== undefined ? m.mic_enabled : m.audio),
+                        cam_enabled: Boolean(m.cam_enabled !== undefined ? m.cam_enabled : m.video),
+                    };
                     syncMeshConnections();
                     updateAllSeatsMediaUI();
                 }
@@ -2656,9 +2675,11 @@
         });
 
         (data.participants || []).forEach(p => {
-            if (p.media_state) {
-                participantMediaState[p.participant_id] = p.media_state;
-            }
+            const ms = p.media_state || {};
+            participantMediaState[p.participant_id] = {
+                mic_enabled: Boolean(ms.mic_enabled !== undefined ? ms.mic_enabled : ms.audio),
+                cam_enabled: Boolean(ms.cam_enabled !== undefined ? ms.cam_enabled : ms.video),
+            };
             if (p.hand_raised !== undefined) {
                 if (!presenceByUser[p.participant_id]) {
                     presenceByUser[p.participant_id] = {

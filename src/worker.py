@@ -6655,6 +6655,7 @@ class ClassroomDO(DurableObject):
             "is_moving":      False,
             "seat_id":        initial_seat_id,
             "can_interact":   can_interact,
+            "media_state":    {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
         }
 
         try:
@@ -6682,6 +6683,7 @@ class ClassroomDO(DurableObject):
                 "type":           "participant_joined",
                 "participant_id": participant_id,
                 "display_name":   display_name,
+                "media_state":    {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
             }), exclude_session_id=session_id)
 
         return Response(None, status=101, web_socket=client)
@@ -6913,8 +6915,8 @@ class ClassroomDO(DurableObject):
                         print(f"[ClassroomDO.signaling] error routing {msg_type} to {target_id}: {exc!r}")
 
         elif msg_type == "media_state":
-            audio = bool(data.get("audio", data.get("mic_enabled", True)))
-            video = bool(data.get("video", data.get("cam_enabled", True)))
+            audio = bool(data.get("audio", data.get("mic_enabled", False)))
+            video = bool(data.get("video", data.get("cam_enabled", False)))
             info["media_state"] = {
                 "audio": audio,
                 "video": video,
@@ -7128,7 +7130,7 @@ class ClassroomDO(DurableObject):
                     "direction":      info["direction"],
                     "is_moving":      info.get("is_moving", False),
                     "seat_id":        info.get("seat_id", ""),
-                    "media_state":    info.get("media_state", {"audio": True, "video": True}),
+                    "media_state":    info.get("media_state", {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False}),
                     "hand_raised":    info.get("hand_raised", False),
                 }
 
