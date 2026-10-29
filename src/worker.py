@@ -6966,6 +6966,17 @@ class ClassroomDO(DurableObject):
                 }))
                 self._broadcast_room_state()
 
+        elif msg_type == "hand_raised":
+            hand_state = bool(data.get("hand_raised", False))
+            info["hand_raised"] = hand_state
+            self._broadcast(json.dumps({
+                "type":           "hand_raised",
+                "participant_id": info["participant_id"],
+                "display_name":   info["display_name"],
+                "hand_raised":    hand_state,
+            }))
+            self._broadcast_room_state()
+
         elif msg_type == "reaction":
             emoji = str(data.get("emoji", ""))[:16]
             self._broadcast(json.dumps({
@@ -7118,6 +7129,7 @@ class ClassroomDO(DurableObject):
                     "is_moving":      info.get("is_moving", False),
                     "seat_id":        info.get("seat_id", ""),
                     "media_state":    info.get("media_state", {"audio": True, "video": True}),
+                    "hand_raised":    info.get("hand_raised", False),
                 }
 
         self._broadcast(json.dumps({

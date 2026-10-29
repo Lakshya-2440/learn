@@ -740,5 +740,21 @@ class TestClassroomDOSignaling:
         )
         assert reaction_bob is True
 
+    @pytest.mark.asyncio
+    async def test_hand_raised_broadcasts_to_all(self):
+        do = self._make_classroom_do()
+        ws_alice = self._add_session(do, "alice", "Alice")
+        ws_bob   = self._add_session(do, "bob", "Bob")
+
+        await do.on_webSocketMessage(ws_alice, json.dumps({"type": "hand_raised", "hand_raised": True}))
+
+        hand_bob = any(
+            json.loads(c[0][0]).get("type") == "hand_raised"
+            and json.loads(c[0][0]).get("hand_raised") is True
+            and json.loads(c[0][0]).get("participant_id") == "alice"
+            for c in ws_bob.send.call_args_list
+        )
+        assert hand_bob is True
+
 
 
