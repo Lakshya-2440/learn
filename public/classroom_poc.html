@@ -2967,32 +2967,19 @@
             });
         });
 
-        const raisedList = allList.filter(item => item.handRaised);
+        // Sort: participants who raised their hand appear first at the top
+        allList.sort((a, b) => {
+            if (a.handRaised && !b.handRaised) return -1;
+            if (!a.handRaised && b.handRaised) return 1;
+            if (a.isSelf) return -1;
+            if (b.isSelf) return 1;
+            return (a.name || '').localeCompare(b.name || '');
+        });
 
         const summaryEl = document.getElementById('sidebarParticipantSummary');
         if (summaryEl) summaryEl.textContent = `${allList.length} in classroom`;
 
-        // 1. Raised Hands Section (Prominent Table Card)
-        if (raisedList.length > 0) {
-            const raisedSection = document.createElement('div');
-            raisedSection.className = 'mb-3.5 p-3 bg-[#2a2217] border border-amber-500/60 rounded-xl shadow-lg';
-            raisedSection.innerHTML = `
-                <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-amber-500/30">
-                    <span class="text-xs font-bold text-amber-200 flex items-center gap-1.5 tracking-wide" style="color:#fef08a !important;">
-                        <span class="text-sm animate-bounce">✋</span> Raised Hands (${raisedList.length})
-                    </span>
-                    <span class="text-[10px] bg-amber-500/20 border border-amber-400/50 text-amber-200 px-2 py-0.5 rounded-full font-bold" style="color:#fde68a !important;">Needs Attention</span>
-                </div>
-                <div class="space-y-1.5"></div>
-            `;
-            const container = raisedSection.querySelector('div.space-y-1\\.5');
-            raisedList.forEach(item => {
-                container.appendChild(makeParticipantRow(item, true));
-            });
-            participantsList.appendChild(raisedSection);
-        }
-
-        // 2. All Participants Table Section
+        // All Participants Table Section
         const allSection = document.createElement('div');
         allSection.innerHTML = `
             <div class="flex items-center justify-between px-1 mb-2">
@@ -3004,12 +2991,12 @@
         `;
         const allContainer = allSection.querySelector('div.space-y-1\\.5');
         allList.forEach(item => {
-            allContainer.appendChild(makeParticipantRow(item, false));
+            allContainer.appendChild(makeParticipantRow(item));
         });
         participantsList.appendChild(allSection);
     }
 
-    function makeParticipantRow(item, isRaisedOnlySection) {
+    function makeParticipantRow(item) {
         const [c1, c2] = item.isSelf ? ['#0D9488', '#14b8a6'] : colorForId(item.pid);
         const card = document.createElement('div');
         card.className = `flex items-center gap-2.5 p-2 rounded-lg border transition-all ${
