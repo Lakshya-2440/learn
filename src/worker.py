@@ -6570,6 +6570,8 @@ class ClassroomDO(DurableObject):
                     "direction":      data.get("direction", "down"),
                     "is_moving":      False,
                     "seat_id":        data.get("seat_id", ""),
+                    "role":           data.get("role", "student"),
+                    "is_instructor":  bool(data.get("is_instructor", False)),
                     "can_interact":   bool(data.get("can_interact", True)),
                 }
             except Exception as exc:
@@ -6594,15 +6596,21 @@ class ClassroomDO(DurableObject):
         token_param = (qs.get("token") or [None])[0]
         participant_param = (qs.get("participant_id") or [None])[0]
         display_name_param = (qs.get("display_name") or [None])[0]
+        role_param = (qs.get("role") or [None])[0]
+        instructor_flag = (qs.get("instructor") or ["0"])[0] == "1" or (qs.get("host") or ["0"])[0] == "1"
 
         authenticated_user = verify_token(token_param or "", self.env.JWT_SECRET) if token_param else None
         is_explicit_viewer = (qs.get("viewer") or ["0"])[0] == "1" or (qs.get("read_only") or ["0"])[0] == "1"
         can_interact = (authenticated_user is not None) or (bool(participant_param) and not is_explicit_viewer)
 
+        is_instructor = False
         if authenticated_user:
             # Derive identity from the verified token, not from untrusted query params.
             participant_id = authenticated_user["id"]
             display_name = authenticated_user.get("username") or participant_id
+            user_role = (authenticated_user.get("role") or "").lower()
+            if user_role in ("instructor", "teacher", "host", "admin") or instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
+                is_instructor = True
         else:
             # Anonymous clients may enter when participant_id is provided
             if not participant_param:
@@ -6613,6 +6621,10 @@ class ClassroomDO(DurableObject):
                 )
             participant_id = participant_param
             display_name = display_name_param or participant_id
+            if instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
+                is_instructor = True
+            elif any(w in display_name.lower() for w in ("teacher", "prof", "instructor", "host")):
+                is_instructor = True
 
         # Sanitise inputs
         participant_id = participant_id[:64]
@@ -6632,9 +6644,10 @@ class ClassroomDO(DurableObject):
             None,
         )
         already_connected = can_interact and existing is not None
-        initial_position  = dict(existing["position"])       if existing else {"x": 0.5, "y": 0.5}
+        default_pos = {"x": 0.5, "y": 0.25} if is_instructor else {"x": 0.5, "y": 0.5}
+        initial_position  = dict(existing["position"])       if existing else default_pos
         initial_direction = existing["direction"]             if existing else "down"
-        initial_seat_id   = existing.get("seat_id", "")      if existing else ""
+        initial_seat_id   = existing.get("seat_id", "")      if existing else ("seat-teacher" if is_instructor else "")
 
         attachment = json.dumps({
             "session_id":     session_id,
@@ -6643,6 +6656,8 @@ class ClassroomDO(DurableObject):
             "position":       initial_position,
             "direction":      initial_direction,
             "seat_id":        initial_seat_id,
+            "role":           "instructor" if is_instructor else "student",
+            "is_instructor":  is_instructor,
             "can_interact":   can_interact,
         })
         server.serializeAttachment(attachment)
@@ -6655,6 +6670,8 @@ class ClassroomDO(DurableObject):
             "direction":      initial_direction,
             "is_moving":      False,
             "seat_id":        initial_seat_id,
+            "role":           "instructor" if is_instructor else "student",
+            "is_instructor":  is_instructor,
             "can_interact":   can_interact,
             "media_state":    {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
         }
@@ -6665,6 +6682,9 @@ class ClassroomDO(DurableObject):
                 "session_id":     session_id,
                 "participant_id": participant_id,
                 "display_name":   display_name,
+                "role":           "instructor" if is_instructor else "student",
+                "is_instructor":  is_instructor,
+                "seat_id":        initial_seat_id,
                 "can_interact":   can_interact,
             }))
             whiteboard_events = await self.ctx.storage.get("whiteboard_events")
@@ -6684,6 +6704,9 @@ class ClassroomDO(DurableObject):
                 "type":           "participant_joined",
                 "participant_id": participant_id,
                 "display_name":   display_name,
+                "role":           "instructor" if is_instructor else "student",
+                "is_instructor":  is_instructor,
+                "seat_id":        initial_seat_id,
                 "media_state":    {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False},
             }), exclude_session_id=session_id)
 
@@ -6830,12 +6853,15 @@ class ClassroomDO(DurableObject):
             MAX_SEATS = DESK_ROWS * DESK_COLS
 
             seat_id = data.get("seat_id", "")
-            # Validate seat_id: must be "seat-N" where N is 1..DESK_ROWS*DESK_COLS
-            if not isinstance(seat_id, str) or not re.fullmatch(r"seat-\d+", seat_id):
+            # Validate seat_id: must be "seat-teacher" or "seat-N" where N is 1..DESK_ROWS*DESK_COLS
+            if not isinstance(seat_id, str):
                 return
-            seat_num = int(seat_id.split("-", 1)[1])
-            if not (1 <= seat_num <= MAX_SEATS):
-                return
+            if seat_id != "seat-teacher":
+                if not re.fullmatch(r"seat-\d+", seat_id):
+                    return
+                seat_num = int(seat_id.split("-", 1)[1])
+                if not (1 <= seat_num <= MAX_SEATS):
+                    return
 
             for other_info in self.sessions.values():
                 if (other_info.get("can_interact", True)
@@ -7131,6 +7157,8 @@ class ClassroomDO(DurableObject):
                     "direction":      info["direction"],
                     "is_moving":      info.get("is_moving", False),
                     "seat_id":        info.get("seat_id", ""),
+                    "role":           info.get("role", "student"),
+                    "is_instructor":  info.get("is_instructor", False),
                     "media_state":    info.get("media_state", {"audio": False, "video": False, "mic_enabled": False, "cam_enabled": False}),
                     "hand_raised":    info.get("hand_raised", False),
                 }
@@ -7154,6 +7182,8 @@ class ClassroomDO(DurableObject):
                 "position":       info["position"],
                 "direction":      info["direction"],
                 "seat_id":        info.get("seat_id", ""),
+                "role":           info.get("role", "student"),
+                "is_instructor":  info.get("is_instructor", False),
                 "can_interact":   info.get("can_interact", True),
             }))
         except Exception as exc:
