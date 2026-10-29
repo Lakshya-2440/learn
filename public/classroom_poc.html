@@ -61,6 +61,14 @@
             color: var(--vc-text);
         }
         html:not(.dark) .vc-theme .bg-gray-950 { background-color: transparent !important; }
+        [data-seat-media] {
+            background: transparent !important;
+            background-color: transparent !important;
+        }
+        [data-seat-media].has-video {
+            background: #000000 !important;
+            background-color: #000000 !important;
+        }
         html:not(.dark) .vc-theme .bg-gray-900,
         html:not(.dark) .vc-theme .bg-gray-900\/90,
         html:not(.dark) .vc-theme .bg-gray-900\/80,
@@ -767,9 +775,9 @@
                 desk.setAttribute('data-seat-container', seatId);
                 desk.title = `Seat ${seatNum} - Click or walk near and press E to sit`;
                 desk.innerHTML = `
-                    <div data-desk-box="${seatId}" class="w-full aspect-[16/10] rounded-lg shadow-lg bg-gradient-to-b from-[#8C4B1E] via-[#7B3F18] to-[#5C2D0C] border-2 border-[#452006] flex items-center justify-center relative group-hover:border-amber-400 group-hover:shadow-amber-900/30 overflow-hidden">
+                    <div data-desk-box="${seatId}" class="w-full aspect-[16/10] rounded-lg shadow-lg bg-gradient-to-b from-[#8C4B1E] via-[#7B3F18] to-[#5C2D0C] border-2 border-[#452006] flex items-center justify-center relative group-hover:border-amber-400 group-hover:shadow-amber-900/30 overflow-hidden" style="background: linear-gradient(to bottom, #8C4B1E, #7B3F18, #5C2D0C) !important;">
                         <span data-seat-number="${seatId}" class="text-xs md:text-sm font-bold text-amber-200/50 select-none tracking-wider">${seatNum}</span>
-                        <div data-seat-media="${seatId}" class="absolute inset-0 hidden flex items-center justify-center bg-transparent">
+                        <div data-seat-media="${seatId}" class="absolute inset-0 hidden flex items-center justify-center" style="background: transparent !important; background-color: transparent !important;">
                             <video data-seat-video="${seatId}" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
                             <div data-seat-avatar="${seatId}" class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white font-bold flex items-center justify-center text-xs md:text-sm shadow-md border border-white/20"></div>
                             <div class="absolute bottom-1 right-1 flex items-center gap-1 bg-gray-900/85 backdrop-blur px-1.5 py-0.5 rounded text-[9px] text-white pointer-events-none">
@@ -1394,8 +1402,10 @@
 
         if (!occupant) {
             mediaContainer.classList.add('hidden');
-            mediaContainer.classList.remove('bg-black');
+            mediaContainer.classList.remove('has-video', 'bg-black', 'bg-gray-950', 'bg-gray-950/85');
             mediaContainer.classList.add('bg-transparent');
+            mediaContainer.style.setProperty('background', 'transparent', 'important');
+            mediaContainer.style.setProperty('background-color', 'transparent', 'important');
             if (numEl) numEl.classList.remove('hidden');
             if (videoEl) {
                 videoEl.srcObject = null;
@@ -1429,8 +1439,10 @@
         const hasVideo = videoTracks.length > 0 && videoTracks.some(t => t.readyState !== 'ended');
 
         if (mediaState.cam_enabled === true && hasVideo) {
-            mediaContainer.classList.add('bg-black');
-            mediaContainer.classList.remove('bg-transparent');
+            mediaContainer.classList.add('has-video', 'bg-black');
+            mediaContainer.classList.remove('bg-transparent', 'bg-gray-950', 'bg-gray-950/85');
+            mediaContainer.style.setProperty('background', '#000000', 'important');
+            mediaContainer.style.setProperty('background-color', '#000000', 'important');
             if (avatarEl) avatarEl.classList.add('hidden');
             if (videoEl) {
                 videoEl.classList.remove('hidden');
@@ -1446,8 +1458,10 @@
                 if (p && p.catch) p.catch(() => {});
             }
         } else {
-            mediaContainer.classList.remove('bg-black');
+            mediaContainer.classList.remove('has-video', 'bg-black', 'bg-gray-950', 'bg-gray-950/85');
             mediaContainer.classList.add('bg-transparent');
+            mediaContainer.style.setProperty('background', 'transparent', 'important');
+            mediaContainer.style.setProperty('background-color', 'transparent', 'important');
             if (videoEl) {
                 videoEl.classList.add('hidden');
                 videoEl.srcObject = null;

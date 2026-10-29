@@ -5866,7 +5866,7 @@ _MIME = {
 
 def _static_cache_control(ext: str) -> str:
     if ext in {"html", "json"}:
-        return "public, max-age=60, s-maxage=300"
+        return "no-cache, no-store, must-revalidate"
     return "public, max-age=31536000, s-maxage=31536000, immutable"
 
 
