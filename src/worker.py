@@ -6581,6 +6581,30 @@ class ClassroomDO(DurableObject):
             WebSocketRequestResponsePair.new("ping", "pong")
         )
 
+    async def _resolve_activity_creator(self, room_id: str):
+        if not room_id or not hasattr(self.env, "DB") or not self.env.DB:
+            return None, None
+        try:
+            enc = getattr(self.env, "ENCRYPTION_KEY", "")
+            act = await self.env.DB.prepare(
+                "SELECT a.id, a.host_id, u.username, u.name AS name_enc "
+                "FROM activities a "
+                "LEFT JOIN users u ON a.host_id = u.id "
+                "WHERE a.slug=? OR a.id=?"
+            ).bind(room_id, room_id).first()
+            if act:
+                dec_name = await decrypt_aes(getattr(act, "name_enc", "") or "", enc) if enc else ""
+                dec_uname = await decrypt_aes(getattr(act, "username", "") or "", enc) if enc else ""
+                host_name = dec_name if (dec_name and dec_name != "[decryption error]") else (
+                    dec_uname if (dec_uname and dec_uname != "[decryption error]") else (
+                        getattr(act, "username", "") or ""
+                    )
+                )
+                return act.host_id, host_name
+        except Exception as e:
+            print(f"[ClassroomDO._resolve_activity_creator] error={e!r}")
+        return None, None
+
     async def on_fetch(self, request):
         upgrade = request.headers.get("Upgrade") or ""
         if upgrade.lower() != "websocket":
@@ -6603,14 +6627,29 @@ class ClassroomDO(DurableObject):
         is_explicit_viewer = (qs.get("viewer") or ["0"])[0] == "1" or (qs.get("read_only") or ["0"])[0] == "1"
         can_interact = (authenticated_user is not None) or (bool(participant_param) and not is_explicit_viewer)
 
+        room_id = parsed.path.strip("/").split("/")[-1]
+        if not getattr(self, "room_id", None):
+            self.room_id = room_id
+
+        # Resolve activity creator from database
+        if not hasattr(self, "activity_host_id"):
+            self.activity_host_id, self.activity_host_name = await self._resolve_activity_creator(room_id)
+
         is_instructor = False
         if authenticated_user:
             # Derive identity from the verified token, not from untrusted query params.
             participant_id = authenticated_user["id"]
             display_name = authenticated_user.get("username") or participant_id
             user_role = (authenticated_user.get("role") or "").lower()
-            if user_role in ("instructor", "teacher", "host", "admin") or instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
-                is_instructor = True
+            if self.activity_host_id:
+                # Room belongs to an activity: ONLY creator (or admin) can be instructor
+                uname = (authenticated_user.get("username") or "").strip().lower()
+                hname = (self.activity_host_name or "").strip().lower()
+                if participant_id == self.activity_host_id or (hname and uname == hname) or user_role == "admin":
+                    is_instructor = True
+            else:
+                if user_role in ("instructor", "teacher", "host", "admin") or instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
+                    is_instructor = True
         else:
             # Anonymous clients may enter when participant_id is provided
             if not participant_param:
@@ -6621,10 +6660,16 @@ class ClassroomDO(DurableObject):
                 )
             participant_id = participant_param
             display_name = display_name_param or participant_id
-            if instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
-                is_instructor = True
-            elif any(w in display_name.lower() for w in ("teacher", "prof", "instructor", "host")):
-                is_instructor = True
+            if self.activity_host_id:
+                hname = (self.activity_host_name or "").strip().lower()
+                dname = (display_name or "").strip().lower()
+                if participant_id == self.activity_host_id or (hname and dname == hname):
+                    is_instructor = True
+            else:
+                if instructor_flag or (role_param and role_param.lower() in ("instructor", "teacher", "host", "admin")):
+                    is_instructor = True
+                elif any(w in display_name.lower() for w in ("teacher", "prof", "instructor", "host")):
+                    is_instructor = True
 
         # Sanitise inputs
         participant_id = participant_id[:64]
@@ -6647,7 +6692,15 @@ class ClassroomDO(DurableObject):
         default_pos = {"x": 0.5, "y": 0.25} if is_instructor else {"x": 0.5, "y": 0.5}
         initial_position  = dict(existing["position"])       if existing else default_pos
         initial_direction = existing["direction"]             if existing else "down"
-        initial_seat_id   = existing.get("seat_id", "")      if existing else ("seat-teacher" if is_instructor else "")
+
+        if is_instructor:
+            initial_seat_id = existing.get("seat_id", "") if existing else "seat-teacher"
+            if not initial_seat_id:
+                initial_seat_id = "seat-teacher"
+        else:
+            # Non-instructors can NEVER sit at seat-teacher
+            ex_seat = existing.get("seat_id", "") if existing else ""
+            initial_seat_id = "" if ex_seat == "seat-teacher" else ex_seat
 
         attachment = json.dumps({
             "session_id":     session_id,
@@ -6856,7 +6909,20 @@ class ClassroomDO(DurableObject):
             # Validate seat_id: must be "seat-teacher" or "seat-N" where N is 1..DESK_ROWS*DESK_COLS
             if not isinstance(seat_id, str):
                 return
-            if seat_id != "seat-teacher":
+            if seat_id == "seat-teacher":
+                # Only the activity creator / instructor can sit at the Teacher's Desk!
+                if not info.get("is_instructor", False):
+                    try:
+                        ws.send(json.dumps({
+                            "type":    "seat_occupied",
+                            "message": "Only the activity creator can sit at the Teacher's Desk.",
+                            "seat_id": seat_id,
+                        }))
+                    except Exception as exc:
+                        await capture_exception(exc, None, self.env,
+                            f"classroom.seat_occupied_send pid={info['participant_id']} seat={seat_id}")
+                    return
+            else:
                 if not re.fullmatch(r"seat-\d+", seat_id):
                     return
                 seat_num = int(seat_id.split("-", 1)[1])

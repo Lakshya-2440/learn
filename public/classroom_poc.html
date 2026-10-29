@@ -741,7 +741,10 @@
         return token && user;
     }
 
+    let myIsInstructor = false;
+
     function isInstructorRole() {
+        if (myIsInstructor) return true;
         const auth = getAuth();
         const authRole = (auth?.user?.role || '').toLowerCase();
         if (['instructor', 'teacher', 'host', 'admin'].includes(authRole)) return true;
@@ -948,6 +951,10 @@
 
     function handleDeskClick(seatId) {
         if (!canInteract) { loginForInteraction(); return; }
+        if (seatId === 'seat-teacher' && !isInstructorRole()) {
+            showToast('Only the activity creator can sit at the Teacher’s Desk', 'warning');
+            return;
+        }
         if (isSeated && currentSeat === seatId) {
             wsSend({ type: 'leave_seat', seat_id: currentSeat });
             return;
@@ -2642,6 +2649,7 @@
                 myParticipantId = data.participant_id;
                 if (data.display_name) myDisplayName = data.display_name;
                 setInteractionMode(data.can_interact !== false);
+                myIsInstructor  = Boolean(data.is_instructor);
                 const strMyId = String(myParticipantId);
                 const curPres = getPresence(strMyId) || {};
                 setPresence(strMyId, {
@@ -2656,8 +2664,15 @@
                     currentSeat = data.seat_id;
                     myCharacter.style.display = 'none';
                     updateSeatLabel(data.seat_id, myDisplayName, myParticipantId);
-                } else if (!isSeated) {
-                    myCharacter.style.display = '';
+                } else {
+                    if (currentSeat === 'seat-teacher' && !myIsInstructor) {
+                        clearSeatLabel('seat-teacher');
+                        currentSeat = null;
+                        isSeated = false;
+                    }
+                    if (!isSeated) {
+                        myCharacter.style.display = '';
+                    }
                 }
                 const canvasBox = classroomCanvas.getBoundingClientRect();
                 if (canvasBox.width > 0 && canvasBox.height > 0) {
@@ -2810,8 +2825,12 @@
                 break;
 
             case 'seat_occupied':
+                if (currentSeat === 'seat-teacher') {
+                    clearSeatLabel('seat-teacher');
+                }
                 isSeated = false;
                 currentSeat = null;
+                if (canInteract) myCharacter.style.display = '';
                 showToast(data.message || 'Seat is taken!', 'warning');
                 break;
 
@@ -3375,6 +3394,9 @@
         let nearestDist = Infinity;
         desks.forEach(chair => {
             const seatId = chair.getAttribute('data-seat-chair');
+            if (seatId === 'seat-teacher' && !isInstructorRole()) {
+                return;
+            }
             const rect   = chair.getBoundingClientRect();
             const cx = rect.left + rect.width  / 2 - canvasRect.left;
             const cy = rect.top  + rect.height / 2 - canvasRect.top;
